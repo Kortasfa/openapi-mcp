@@ -28,13 +28,13 @@ Downstream authorization is performed by the target API.
 
 The conversion package has one linear flow:
 
-1. `pkg/openapi2mcp/spec.go` loads, validates, and selects curated OpenAPI operations.
-2. `pkg/openapi2mcp/schema.go` builds MCP tool input schemas.
-3. `pkg/openapi2mcp/profile.go` writes and validates versioned compiled profiles.
-4. `pkg/openapi2mcp/register.go` registers tools using the official MCP Go SDK.
-5. `pkg/openapi2mcp/request.go` builds the upstream HTTP request.
-6. `pkg/openapi2mcp/http_client.go` forwards the client Bearer header.
-7. `pkg/openapi2mcp/response.go` creates an MCP tool result from the HTTP response.
+1. `pkg/openapi-mcp/spec.go` loads, validates, and selects curated OpenAPI operations.
+2. `pkg/openapi-mcp/schema.go` builds MCP tool input schemas.
+3. `pkg/openapi-mcp/profile.go` writes and validates versioned compiled profiles.
+4. `pkg/openapi-mcp/register.go` registers tools using the official MCP Go SDK.
+5. `pkg/openapi-mcp/request.go` builds the upstream HTTP request.
+6. `pkg/openapi-mcp/http_client.go` forwards the client Bearer header.
+7. `pkg/openapi-mcp/response.go` creates an MCP tool result from the HTTP response.
 
 The CLI in `cmd/openapi-mcp` owns the stateless Streamable HTTP endpoint and profile hot reload.
 

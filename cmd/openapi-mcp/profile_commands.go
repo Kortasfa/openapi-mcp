@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	openapimcp "github.com/Kortasfa/openapi-mcp/pkg/openapi-mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/Kortasfa/openapi-mcp/pkg/openapi2mcp"
 )
 
 func runCompileCommand(args []string) {
@@ -21,12 +21,12 @@ func runCompileCommand(args []string) {
 		fmt.Fprintln(os.Stderr, "Usage: openapi-mcp compile --output <profile.json> <openapi-spec.yaml>")
 		os.Exit(2)
 	}
-	profile, err := openapi2mcp.CompileProfileFile(flags.Arg(0))
+	profile, err := openapimcp.CompileProfileFile(flags.Arg(0))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to compile OpenAPI spec: %v\n", err)
 		os.Exit(1)
 	}
-	if err := openapi2mcp.WriteCompiledProfile(*outputPath, profile); err != nil {
+	if err := openapimcp.WriteCompiledProfile(*outputPath, profile); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to write compiled profile: %v\n", err)
 		os.Exit(1)
 	}
@@ -75,12 +75,12 @@ type profileRuntime struct {
 	profilePath string
 	server      atomic.Pointer[mcp.Server]
 	mu          sync.RWMutex
-	profile     *openapi2mcp.CompiledProfile
+	profile     *openapimcp.CompiledProfile
 	modifiedAt  time.Time
 }
 
 func (runtime *profileRuntime) reload() error {
-	profile, doc, operations, err := openapi2mcp.LoadCompiledProfile(runtime.profilePath)
+	profile, doc, operations, err := openapimcp.LoadCompiledProfile(runtime.profilePath)
 	if err != nil {
 		return err
 	}

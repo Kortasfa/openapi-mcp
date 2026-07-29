@@ -7,12 +7,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	openapimcp "github.com/Kortasfa/openapi-mcp/pkg/openapi-mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/Kortasfa/openapi-mcp/pkg/openapi2mcp"
 )
 
 func TestMCPHandlerIsStatelessStreamableHTTP(t *testing.T) {
-	doc, err := openapi2mcp.LoadOpenAPISpecFromString(`openapi: 3.0.0
+	doc, err := openapimcp.LoadOpenAPISpecFromString(`openapi: 3.0.0
 info:
   title: Test
   version: "1"
