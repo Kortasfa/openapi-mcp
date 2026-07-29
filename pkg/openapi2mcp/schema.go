@@ -400,8 +400,17 @@ func BuildInputSchemaWithContext(params openapi3.Parameters, requestBody *openap
 				fmt.Fprintf(os.Stderr, "[WARN] Parameter '%s' uses 'string' with 'binary' format. Non-JSON body types are not fully supported.\n", p.Name)
 			}
 			prop := extractPropertyWithContext(p.Schema, doc)
-			if p.Description != "" {
-				prop["description"] = p.Description
+			description := p.Description
+			if !p.Required && p.In == "query" {
+				filterDescription := "Optional query filter. Omit it to return unfiltered results."
+				if description != "" {
+					description += " " + filterDescription
+				} else {
+					description = filterDescription
+				}
+			}
+			if description != "" {
+				prop["description"] = description
 			}
 			// Use escaped parameter name for MCP schema compatibility
 			escapedName := escapeParameterName(p.Name)

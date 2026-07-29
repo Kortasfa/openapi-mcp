@@ -76,6 +76,8 @@ type OpenAPIOperation struct {
 	RequestBody *openapi3.RequestBodyRef
 	Tags        []string
 	Security    openapi3.SecurityRequirements
+	MCPReadOnly bool
+	MCPBasePath string
 }
 
 // ToolGenOptions controls tool generation and output for OpenAPI-MCP conversion.

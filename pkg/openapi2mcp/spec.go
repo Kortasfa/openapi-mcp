@@ -156,6 +156,9 @@ func ExtractOpenAPIOperations(doc *openapi3.T) []OpenAPIOperation {
 	var ops []OpenAPIOperation
 	for path, pathItem := range doc.Paths.Map() {
 		for method, op := range pathItem.Operations() {
+			if !isMCPToolEnabled(doc, op) {
+				continue
+			}
 			id := op.OperationID
 			if id == "" {
 				id = fmt.Sprintf("%s_%s", method, path)
@@ -188,10 +191,32 @@ func ExtractOpenAPIOperations(doc *openapi3.T) []OpenAPIOperation {
 				RequestBody: op.RequestBody,
 				Tags:        tags,
 				Security:    security,
+				MCPReadOnly: extensionEnabled(op.Extensions, "x-mcp-read-only"),
+				MCPBasePath: extensionString(op.Extensions, "x-mcp-base-path"),
 			})
 		}
 	}
 	return ops
+}
+
+func isMCPToolEnabled(doc *openapi3.T, operation *openapi3.Operation) bool {
+	if extensionEnabled(operation.Extensions, "x-mcp-disabled") {
+		return false
+	}
+	return !extensionEnabled(doc.Extensions, "x-mcp-curated") || extensionEnabled(operation.Extensions, "x-mcp-enabled")
+}
+
+func extensionEnabled(extensions map[string]any, name string) bool {
+	enabled, ok := extensions[name].(bool)
+	return ok && enabled
+}
+
+func extensionString(extensions map[string]any, name string) string {
+	value, ok := extensions[name].(string)
+	if !ok {
+		return ""
+	}
+	return value
 }
 
 // ExtractFilteredOpenAPIOperations returns only those operations whose description matches includeRegex (if not nil) and does not match excludeRegex (if not nil).

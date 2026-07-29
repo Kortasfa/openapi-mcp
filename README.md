@@ -11,25 +11,53 @@ The repository includes the iSpring Learn specification at
 
 ```mermaid
 flowchart LR
-  C[MCP client] -->|Streamable HTTP /mcp| S[openapi-mcp]
-  S -->|OpenAPI-derived tools| O[OpenAPI operation]
-  O -->|HTTPS + downstream Bearer token| A[REST API]
+  C[MCP client] -->|Bearer access token| S[openapi-mcp]
+  S -->|same Bearer token| A[REST API]
 ```
 
 - The OpenAPI document defines MCP tool names, inputs and the upstream request.
-- Each server process is stateless: it keeps no MCP session between requests.
+- Each server process is stateless: it keeps no MCP session or token state.
 - `OPENAPI_BASE_URL` overrides the `servers` URL from the specification.
-- `BEARER_TOKEN` is sent as `Authorization: Bearer …` to the downstream API.
+- The `Authorization: Bearer …` header from each MCP tool call is forwarded to
+  the downstream API.
 
-`BEARER_TOKEN` is currently a server-side downstream credential. It is **not**
-MCP-client authorization or per-client RBAC; that gateway layer is intentionally
-not implemented yet.
+The server does not validate, exchange, refresh, or persist access tokens.
+Downstream authorization is performed by the target API.
+
+## Curated tools
+
+The iSpring specification is intentionally curated to keep MCP tool discovery
+small and predictable. Its root `x-mcp-curated: true` enables opt-in mode:
+
+- `x-mcp-enabled: true` exposes an operation as an MCP tool.
+- `x-mcp-disabled: true` always excludes an operation, including in non-curated
+  specifications.
+- `x-mcp-read-only: true` marks a safe read-only operation even when the API
+  uses `POST` for search.
+- `x-mcp-base-path` replaces the path portion of the configured base URL for
+  an operation that belongs to a different upstream API version.
+
+The bundled iSpring profile exposes a focused set of read and write tools for
+organization, users, learning content, enrollment, training, assignments, and
+results. It omits token generation, legacy duplicates, webhooks, and specialized
+performance-management endpoints.
+
+For the common “users in a department” workflow, call `ListDepartments` to
+resolve the department ID, then call `GetPagedUsersList` with
+`requestBody: { "page": 1, "departments": ["<department-id>"] }`. `page`
+is required by iSpring; all other body fields are optional filters. This tool
+uses iSpring's `/api/v2` endpoint while the rest of the profile can use
+`/api/v3`. The tool descriptions contain the same guidance for MCP clients.
+
+Write tools require `__confirmed: true` after the user has explicitly approved
+the change. The MCP server returns a confirmation request before it sends any
+write request upstream.
 
 ## Requirements
 
 - Go 1.25 or newer
 - An OpenAPI 3.x YAML or JSON document
-- Credentials for the downstream API when its operations require them
+- A client capable of setting HTTP headers for remote MCP connections
 
 ## Build
 
@@ -53,54 +81,40 @@ Connect an MCP client to `http://localhost:8080/mcp`. The client must send an
 `Accept` header that includes both `application/json` and `text/event-stream`,
 as required by the Streamable HTTP transport.
 
-For a protected upstream API, configure its credential in the server process:
+For a protected upstream API, configure the MCP client to send its credential:
 
-```sh
-BEARER_TOKEN='downstream-access-token' \
-  bin/openapi-mcp --http=:8080 specs/weather.json
+```text
+MCP URL: http://localhost:8080/mcp
+HTTP header: Authorization: Bearer <downstream-access-token>
 ```
 
-Never place real tokens or client secrets in the repository, command history,
-or MCP tool arguments.
+Never place client secrets in the repository, command history, or MCP tool
+arguments.
 
 ## iSpring Learn
 
 The bundled [`specs/rest-api.yaml`](specs/rest-api.yaml) produces 143 MCP tools
-from the iSpring Learn REST API. The iSpring token endpoint is part of the
-schema, but token exchange should happen outside the MCP server so that a
-client secret never reaches an MCP tool call.
+from the iSpring Learn REST API. Obtain an iSpring access token outside the MCP
+server, then configure the MCP client to send it as an HTTP Bearer header. The
+server forwards that header to iSpring for every API tool call.
 
-### 1. Obtain a short-lived downstream access token
+### 1. Configure the MCP client
 
-Set the URLs for the intended environment. The test environment uses `/api/v3`
-for both the token and REST API paths.
+Use the remote server URL and configure an HTTP header in the client. The exact
+syntax depends on the MCP client:
 
-```sh
-export ISPRING_TOKEN_URL='https://test.mint.local.learn.ispringdev.com/api/v3/token'
-export ISPRING_API_BASE_URL='https://test.mint.local.learn.ispringdev.com/api/v3'
-export ISPRING_CLIENT_ID='replace-with-client-id'
-read -rs 'ISPRING_CLIENT_SECRET?iSpring client secret: '
-export ISPRING_CLIENT_SECRET
-
-export BEARER_TOKEN="$({
-  curl --fail-with-body --silent --show-error --request POST "$ISPRING_TOKEN_URL" \
-    --header 'Accept: application/json' \
-    --header 'Content-Type: application/x-www-form-urlencoded' \
-    --data-urlencode "client_id=$ISPRING_CLIENT_ID" \
-    --data-urlencode "client_secret=$ISPRING_CLIENT_SECRET" \
-    --data-urlencode 'grant_type=client_credentials'
-} | jq --raw-output '.access_token')"
-
-test "$BEARER_TOKEN" != 'null' && test -n "$BEARER_TOKEN"
+```text
+MCP URL: https://mcp.example.com/mcp
+HTTP header: Authorization: Bearer <iSpring access token>
 ```
 
-This requires `curl` and `jq`. Do not export or log the returned token beyond
-the process that needs it.
+The iSpring `Client ID` and `Client Secret` stay in the client-side secret store
+or token-issuing component. They never reach this server or an MCP tool call.
 
 ### 2. Start the server
 
 ```sh
-OPENAPI_BASE_URL="$ISPRING_API_BASE_URL" \
+OPENAPI_BASE_URL='https://test.mint.local.learn.ispringdev.com/api/v3' \
   bin/openapi-mcp --http=:8080 specs/rest-api.yaml
 ```
 
@@ -116,6 +130,7 @@ Use an MCP client in production. This request lists the generated tools:
 curl --fail-with-body http://localhost:8080/mcp \
   --header 'Content-Type: application/json' \
   --header 'Accept: application/json, text/event-stream' \
+  --header 'Authorization: Bearer <iSpring-access-token>' \
   --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
@@ -132,7 +147,6 @@ openapi-mcp [flags] filter <openapi-spec-path>
 | --- | --- | --- |
 | `--http=:8080` | — | Serve stateless Streamable HTTP at `/mcp`. |
 | `--base-url` | `OPENAPI_BASE_URL` | Override the OpenAPI server URL. |
-| `--bearer-token` | `BEARER_TOKEN` | Set the downstream Bearer token. |
 | `--api-key` | `API_KEY` | Set the downstream API key. |
 | `--basic-auth` | `BASIC_AUTH` | Set downstream Basic credentials. |
 | `--tag` | `OPENAPI_TAG` | Include operations with a tag (repeatable). |
@@ -158,10 +172,10 @@ bin/openapi-mcp --http=:8080 --tag=Users specs/rest-api.yaml
 ## Safety
 
 - Treat all downstream credentials as secrets.
-- Run a separate server process per downstream credential until per-client
-  authorization is implemented.
+- Configure each MCP client to send its own access token over HTTPS.
 - Put the MCP endpoint behind TLS and your product's authentication proxy.
 - Review exposed operations with `--dry-run` or `--summary` before deployment.
+- This is transparent token forwarding, not product-level RBAC or tool filtering.
 
 ## License
 

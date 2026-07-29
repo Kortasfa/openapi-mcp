@@ -518,7 +518,13 @@ func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema map[string]a
 			}
 		}
 		desc.WriteString("Required (" + strings.Join(authMethods, " OR ") + "). ")
-		desc.WriteString("Set environment variables: API_KEY, BEARER_TOKEN, or BASIC_AUTH")
+		desc.WriteString("Send credentials in the MCP client's HTTP headers")
+	}
+	if !op.MCPReadOnly {
+		method := strings.ToUpper(op.Method)
+		if method == "PUT" || method == "POST" || method == "DELETE" {
+			desc.WriteString("\n\nCONFIRMATION REQUIRED: This operation may modify data. Ask the user for confirmation, then include __confirmed: true in the tool arguments.")
+		}
 	}
 
 	// Extract required parameters first
@@ -737,19 +743,8 @@ func generateAI401403ErrorResponse(op OpenAPIOperation, inputSchemaJSON []byte, 
 	response.WriteString("\n")
 
 	response.WriteString("AUTHENTICATION SETUP:\n")
-	response.WriteString("Set one of these environment variables based on your API:\n\n")
-
-	response.WriteString("• API Key Authentication:\n")
-	response.WriteString("  export API_KEY=\"your-api-key-here\"\n")
-	response.WriteString("  # Common header names: X-API-Key, Authorization, Api-Key\n\n")
-
-	response.WriteString("• Bearer Token Authentication:\n")
-	response.WriteString("  export BEARER_TOKEN=\"your-bearer-token-here\"\n")
-	response.WriteString("  # Sets Authorization: Bearer <token>\n\n")
-
-	response.WriteString("• Basic Authentication:\n")
-	response.WriteString("  export BASIC_AUTH=\"username:password\"\n")
-	response.WriteString("  # Sets Authorization: Basic <base64-encoded-credentials>\n\n")
+	response.WriteString("Configure the MCP client to send credentials in HTTP headers.\n")
+	response.WriteString("For Bearer authentication: Authorization: Bearer <access-token>\n\n")
 
 	// Server error details if available
 	if responseBody != "" {
@@ -1466,6 +1461,18 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 					[]string{"list", "schema <tool>"},
 				), nil
 			}
+			method := strings.ToUpper(opCopy.Method)
+			if !opCopy.MCPReadOnly && (opts == nil || opts.ConfirmDangerousActions) && (method == "PUT" || method == "POST" || method == "DELETE") {
+				confirmed, _ := args["__confirmed"].(bool)
+				if !confirmed {
+					confirmText := fmt.Sprintf("⚠️  CONFIRMATION REQUIRED\n\nAction: %s\nThis action may modify data. Proceed?\n\nTo confirm, retry the call with {\"__confirmed\": true} added to your arguments.", name)
+					return &mcp.CallToolResult{
+						Content: []mcp.Content{
+							&mcp.TextContent{Text: confirmText},
+						},
+					}, nil
+				}
+			}
 
 			// Build URL path with path parameters
 			path := opCopy.Path
@@ -1499,12 +1506,18 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 						if p.Schema != nil && p.Schema.Value != nil && p.Schema.Value.Type != nil {
 							isInteger = p.Schema.Value.Type.Is("integer")
 						}
-						query.Set(p.Name, formatParameterValue(val, isInteger))
+						if values, ok := val.([]any); ok {
+							for _, value := range values {
+								query.Add(p.Name, formatParameterValue(value, isInteger))
+							}
+						} else {
+							query.Set(p.Name, formatParameterValue(val, isInteger))
+						}
 					}
 				}
 			}
 			// Pick a random baseURL for each call using the global rand
-			baseURL := baseURLs[rand.Intn(len(baseURLs))]
+			baseURL := baseURLForOperation(baseURLs[rand.Intn(len(baseURLs))], opCopy.MCPBasePath)
 			fullURL := baseURL + path
 			if len(query) > 0 {
 				fullURL += "?" + query.Encode()
@@ -1531,7 +1544,6 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 				}
 			}
 			// Build HTTP request
-			method := strings.ToUpper(opCopy.Method)
 			httpReq, err := http.NewRequestWithContext(ctx, method, fullURL, bytes.NewReader(body))
 			if err != nil {
 				return nil, err
@@ -1664,84 +1676,14 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 				logHTTPRequest(httpReq, body)
 			}
 
-			// Preserve existing authentication context from session request (contains headers)
-			// and augment it with tool arguments for priority override
-			var finalAuthCtx *auth.AuthContext
-			if existingAuthCtx, hasSessionAuth := auth.FromContext(ctx); hasSessionAuth && existingAuthCtx != nil {
-				// Session already has authentication context (e.g., from headers)
-				// Use existing context and only check for tool argument overrides
-				tokenPreview := existingAuthCtx.Token
-				if len(tokenPreview) > 20 {
-					tokenPreview = tokenPreview[:20]
+			authRequest := httpReq
+			if req.Extra != nil {
+				authRequest = httpReq.Clone(ctx)
+				if authorization := req.Extra.Header.Get("Authorization"); authorization != "" {
+					authRequest.Header.Set("Authorization", authorization)
 				}
-				log.Printf("DEBUG: Using existing session auth context with token: %s...", tokenPreview)
-				finalAuthCtx = existingAuthCtx
-
-				// Priority 1: Check if tool arguments provide authentication tokens (highest priority)
-				// Create a temporary context to extract tool tokens, but preserve session context otherwise
-				tempAuthCtx := auth.CreateAuthContextWithToolArgs(httpReq, doc, dbSpec, args)
-				if tempAuthCtx.Token != "" {
-					tokenPreview := tempAuthCtx.Token
-					if len(tokenPreview) > 20 {
-						tokenPreview = tokenPreview[:20]
-					}
-					log.Printf("DEBUG: Tool arguments override session token: %s...", tokenPreview)
-					// Tool arguments provided a token, use the temp context
-					finalAuthCtx = tempAuthCtx
-				} else if existingAuthCtx.Token != "" {
-					tokenPreview := existingAuthCtx.Token
-					if len(tokenPreview) > 20 {
-						tokenPreview = tokenPreview[:20]
-					}
-					log.Printf("DEBUG: Using session token from existing context: %s...", tokenPreview)
-				} else {
-					// No token in session context, try to extract from session auth headers or original request
-					log.Printf("DEBUG: No token in session context, trying to extract from session auth headers")
-
-					// First try session auth headers if available
-					var authHeader string
-					if existingAuthCtx.OriginalRequest != nil {
-						authHeader = existingAuthCtx.OriginalRequest.Header.Get("Authorization")
-					}
-
-					// Fallback to original request headers if session headers are empty
-					if authHeader == "" && existingAuthCtx.OriginalRequest != nil {
-						log.Printf("DEBUG: No session auth headers, trying to extract from original request headers")
-						authHeader = existingAuthCtx.OriginalRequest.Header.Get("Authorization")
-					}
-
-					if authHeader != "" {
-						headerPreview := authHeader
-						if len(headerPreview) > 30 {
-							headerPreview = headerPreview[:30]
-						}
-						log.Printf("DEBUG: Found Authorization header: %s...", headerPreview)
-						if strings.HasPrefix(authHeader, "Bearer ") {
-							sessionToken := strings.TrimPrefix(authHeader, "Bearer ")
-							tokenPreview := sessionToken
-							if len(tokenPreview) > 20 {
-								tokenPreview = tokenPreview[:20]
-							}
-							log.Printf("DEBUG: Extracted Bearer token: %s...", tokenPreview)
-							// Create updated context with the extracted token
-							finalAuthCtx = &auth.AuthContext{
-								Token:         sessionToken,
-								AuthType:      existingAuthCtx.AuthType,
-								Endpoint:      existingAuthCtx.Endpoint,
-								SpecParamName: existingAuthCtx.SpecParamName,
-								ApiHost:       existingAuthCtx.ApiHost,
-								HostHeaders:   existingAuthCtx.HostHeaders,
-							}
-						}
-					} else {
-						log.Printf("DEBUG: No Authorization header found in session or original request")
-					}
-				}
-			} else {
-				// No session authentication context, create new one with tool arguments
-				log.Printf("DEBUG: No session auth context found, creating new context with tool args")
-				finalAuthCtx = auth.CreateAuthContextWithToolArgs(httpReq, doc, dbSpec, args)
 			}
+			finalAuthCtx := auth.CreateBearerAuthContext(authRequest)
 			ctxWithAuth := auth.WithAuthContext(ctx, finalAuthCtx)
 			httpReqWithAuth := httpReq.WithContext(ctxWithAuth)
 
@@ -1889,13 +1831,7 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 					StructuredContent: map[string]any{"partial": true, "resume_token": "stream-" + fmt.Sprintf("%d", rand.Intn(1000))},
 				}, nil
 			}
-			if args["resume_token"] != "" {
-				var resumeToken string
-				if s, ok := args["resume_token"].(string); ok {
-					resumeToken = s
-				} else {
-					resumeToken = fmt.Sprintf("%v", args["resume_token"])
-				}
+			if resumeToken, ok := args["resume_token"].(string); ok && resumeToken != "" {
 				return &mcp.CallToolResult{
 					Content: []mcp.Content{
 						&mcp.TextContent{
@@ -1905,15 +1841,25 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 					StructuredContent: map[string]any{"partial": true, "resume_token": resumeToken},
 				}, nil
 			}
-			if (opts == nil || opts.ConfirmDangerousActions) && (method == "PUT" || method == "POST" || method == "DELETE") {
-				if _, confirmed := args["__confirmed"]; !confirmed {
-					confirmText := fmt.Sprintf("⚠️  CONFIRMATION REQUIRED\n\nAction: %s\nThis action is irreversible. Proceed?\n\nTo confirm, retry the call with {\"__confirmed\": true} added to your arguments.", name)
+			if isJSON {
+				var responseData any
+				if err := json.Unmarshal(respBody, &responseData); err == nil {
+					resultObj := map[string]any{
+						"type":        "api_response",
+						"http_status": resp.StatusCode,
+						"operation": map[string]any{
+							"id":          opCopy.OperationID,
+							"summary":     opCopy.Summary,
+							"description": opCopy.Description,
+						},
+						"data": responseData,
+					}
+					resultJSON, _ := json.MarshalIndent(resultObj, "", "  ")
 					return &mcp.CallToolResult{
 						Content: []mcp.Content{
-							&mcp.TextContent{
-								Text: confirmText,
-							},
+							&mcp.TextContent{Text: string(resultJSON)},
 						},
+						StructuredContent: resultObj,
 					}, nil
 				}
 			}
@@ -1923,7 +1869,6 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 						Text: respText,
 					},
 				},
-				StructuredContent: map[string]any{"output_format": "unstructured", "output_type": "text"},
 			}, nil
 		})
 		toolNames = append(toolNames, name)
@@ -2090,4 +2035,19 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 	}
 
 	return toolNames
+}
+
+func baseURLForOperation(baseURL, basePath string) string {
+	if basePath == "" {
+		return strings.TrimRight(baseURL, "/")
+	}
+	parsedURL, err := url.Parse(baseURL)
+	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
+		return strings.TrimRight(baseURL, "/")
+	}
+	parsedURL.Path = "/" + strings.Trim(basePath, "/")
+	parsedURL.RawPath = ""
+	parsedURL.RawQuery = ""
+	parsedURL.Fragment = ""
+	return strings.TrimRight(parsedURL.String(), "/")
 }

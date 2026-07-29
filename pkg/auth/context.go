@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -34,6 +33,19 @@ const authContextKey contextKey = "auth"
 
 func CreateAuthContext(r *http.Request, doc *openapi3.T, spec *models.OpenAPISpec) *AuthContext {
 	return CreateAuthContextWithToolArgs(r, doc, spec, nil)
+}
+
+func CreateBearerAuthContext(r *http.Request) *AuthContext {
+	authCtx := &AuthContext{AuthType: "bearer", OriginalRequest: r}
+	if r == nil {
+		return authCtx
+	}
+
+	authHeader := r.Header.Get("Authorization")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		authCtx.Token = strings.TrimPrefix(authHeader, "Bearer ")
+	}
+	return authCtx
 }
 
 // CreateAuthContextWithToolArgs creates authentication context with support for tool-level arguments
@@ -94,11 +106,6 @@ func CreateAuthContextWithToolArgs(r *http.Request, doc *openapi3.T, spec *model
 	// Priority 3: Database tokens as fallback
 	if token == "" && spec != nil && spec.ApiKeyToken != nil && *spec.ApiKeyToken != "" {
 		token = *spec.ApiKeyToken
-	}
-
-	// Priority 4: Environment variables as final fallback
-	if token == "" {
-		token = extractTokenFromEnvironment(authType)
 	}
 
 	authCtx.Token = token
@@ -335,38 +342,6 @@ func extractAPIKeyHeaderFromCache(doc *openapi3.T, headerMappingCache map[string
 
 	// Fallback to the normalized name if we can't find the original
 	return normalizedHeaderName
-}
-
-// extractTokenFromEnvironment extracts authentication token from environment variables
-// as a fallback when no request headers are provided
-func extractTokenFromEnvironment(authType string) string {
-	switch authType {
-	case "bearer":
-		if token := os.Getenv("BEARER_TOKEN"); token != "" {
-			return token
-		}
-		// Also check generic API_KEY as fallback
-		if token := os.Getenv("API_KEY"); token != "" {
-			return token
-		}
-	case "basic":
-		if token := os.Getenv("BASIC_AUTH"); token != "" {
-			return token
-		}
-	case "apiKey":
-		// Try environment variables in priority order
-		envVars := []string{
-			"API_KEY",      // Generic API key
-			"RAPIDAPI_KEY", // RapidAPI specific
-			"X_API_KEY",    // X-API-Key variant
-		}
-		for _, envVar := range envVars {
-			if token := os.Getenv(envVar); token != "" {
-				return token
-			}
-		}
-	}
-	return ""
 }
 
 // extractAPIHostFromSpec extracts the API host from OpenAPI spec's servers section

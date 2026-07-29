@@ -16,7 +16,6 @@ type cliFlags struct {
 	machine            bool
 	apiKeyFlag         string
 	baseURLFlag        string
-	bearerToken        string
 	basicAuth          string
 	httpAddr           string
 	includeDescRegex   string
@@ -72,7 +71,6 @@ func parseFlags() *cliFlags {
 	flags.machine = true
 	flag.StringVar(&flags.apiKeyFlag, "api-key", "", "API key for authenticated endpoints (overrides API_KEY env)")
 	flag.StringVar(&flags.baseURLFlag, "base-url", "", "Override the base URL for HTTP calls (overrides OPENAPI_BASE_URL env)")
-	flag.StringVar(&flags.bearerToken, "bearer-token", os.Getenv("BEARER_TOKEN"), "Bearer token for Authorization header (overrides BEARER_TOKEN env)")
 	flag.StringVar(&flags.basicAuth, "basic-auth", os.Getenv("BASIC_AUTH"), "Basic auth (user:pass) for Authorization header (overrides BASIC_AUTH env)")
 	flag.StringVar(&flags.httpAddr, "http", "", "Serve over HTTP on this address (e.g., :8080). For MCP server: serves tools via HTTP. For validate/lint: creates REST API endpoints.")
 	flag.StringVar(&flags.includeDescRegex, "include-desc-regex", "", "Only include APIs whose description matches this regex (overrides INCLUDE_DESC_REGEX env)")
@@ -174,7 +172,6 @@ Flags:
   --extended           Enable extended (human-friendly) output (default: minimal/agent)
   --api-key            API key for authenticated endpoints
   --base-url           Override the base URL for HTTP calls
-  --bearer-token       Bearer token for Authorization header
   --basic-auth         Basic auth (user:pass) for Authorization header
   --http               Serve over HTTP on this address (e.g., :8080). For MCP server: serves tools via HTTP. For validate/lint: creates REST API endpoints.
                        In HTTP mode, authentication can also be provided via headers:

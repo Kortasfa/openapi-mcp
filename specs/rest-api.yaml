@@ -1,4 +1,5 @@
 openapi: 3.0.0
+x-mcp-curated: true
 info:
   title: 'Learn Rest Api'
   version: '3.0'
@@ -43,6 +44,7 @@ paths:
         - content
       summary: 'Get content list'
       operationId: GetContent
+      x-mcp-enabled: true
       parameters:
         -
           $ref: '#/components/parameters/targetLocale'
@@ -167,6 +169,7 @@ paths:
         - content
       summary: 'Get content item'
       operationId: GetContentItem
+      x-mcp-enabled: true
       parameters:
         -
           $ref: '#/components/parameters/targetLocale'
@@ -350,6 +353,7 @@ paths:
         - content
       summary: 'List modules by course id'
       operationId: ListCourseModules
+      x-mcp-enabled: true
       parameters:
         -
           name: courseId
@@ -579,6 +583,7 @@ paths:
         - task
       summary: 'Get async task status'
       operationId: GetTaskStatus
+      x-mcp-enabled: true
       parameters:
         -
           name: taskId
@@ -608,6 +613,7 @@ paths:
         - assignments
       summary: 'List assignments'
       operationId: ListAssignments
+      x-mcp-enabled: true
       parameters:
         -
           $ref: '#/components/parameters/pageSize'
@@ -644,6 +650,7 @@ paths:
         - assignments
       summary: 'Retrieves a list of ungraded attempts for an assignment'
       operationId: ListAssignmentAttempts
+      x-mcp-enabled: true
       parameters:
         -
           name: assignmentId
@@ -714,6 +721,7 @@ paths:
         - learning_track
       summary: 'Retrieves a list of courses included in the trajectories'
       operationId: ListLearningTracksCourses
+      x-mcp-enabled: true
       parameters:
         -
           name: learningTrackIds
@@ -789,6 +797,7 @@ paths:
         - quizzes
       summary: 'Retrieves a list of quizzes'
       operationId: ListQuizzes
+      x-mcp-enabled: true
       parameters:
         -
           $ref: '#/components/parameters/pageSize'
@@ -882,6 +891,7 @@ paths:
         - department
       summary: 'Add a new department'
       operationId: AddDepartment
+      x-mcp-enabled: true
       parameters:
         -
           $ref: '#/components/parameters/returnObject'
@@ -941,6 +951,8 @@ paths:
         - department
       summary: 'Get department info'
       operationId: GetDepartment
+      x-mcp-enabled: true
+      description: 'Retrieve one department when its departmentId is already known. Use ListDepartments first when searching by name or code.'
       parameters:
         -
           name: departmentId
@@ -973,6 +985,7 @@ paths:
         - department
       summary: 'Update department'
       operationId: UpdateDepartment
+      x-mcp-enabled: true
       parameters:
         -
           name: departmentId
@@ -1025,6 +1038,8 @@ paths:
         - departments
       summary: 'List departments'
       operationId: ListDepartments
+      x-mcp-enabled: true
+      description: 'Primary department directory. Use this first to find a departmentId by name or code. To list users in a department, pass the returned departmentId to GetPagedUsersList in requestBody.departments.'
       parameters:
         -
           $ref: '#/components/parameters/pageSize'
@@ -1083,6 +1098,7 @@ paths:
         - department
       summary: 'Move users to department'
       operationId: MoveUsersToDepartment
+      x-mcp-enabled: true
       parameters:
         -
           name: departmentId
@@ -1203,6 +1219,7 @@ paths:
         - enrollment
       summary: 'Create new enrollments'
       operationId: EnrollLearnersInCourses
+      x-mcp-enabled: true
       requestBody:
         required: true
         content:
@@ -1227,6 +1244,7 @@ paths:
         - enrollment
       summary: 'List enrollments'
       operationId: ListEnrollments
+      x-mcp-enabled: true
       parameters:
         -
           $ref: '#/components/parameters/pageSize'
@@ -1311,6 +1329,7 @@ paths:
         - enrollment
       summary: 'Get enrollment details'
       operationId: GetEnrollment
+      x-mcp-enabled: true
       parameters:
         -
           name: enrollmentId
@@ -1341,6 +1360,7 @@ paths:
         - enrollment
       summary: 'Update enrollment'
       operationId: ChangeEnrollment
+      x-mcp-enabled: true
       parameters:
         -
           name: enrollmentId
@@ -1427,6 +1447,7 @@ paths:
         - certificate
       summary: 'Retrieves issued certificate information'
       operationId: GetIssuedCertificate
+      x-mcp-enabled: true
       parameters:
         -
           name: issuedCertificateId
@@ -1550,6 +1571,7 @@ paths:
         - group
       summary: 'Get group list'
       operationId: GetGroups
+      x-mcp-enabled: true
       responses:
         '200':
           description: 'Success Response'
@@ -1578,6 +1600,7 @@ paths:
         - group
       summary: 'Add a new group'
       operationId: AddGroup
+      x-mcp-enabled: true
       parameters:
         -
           $ref: '#/components/parameters/returnObject'
@@ -1732,6 +1755,7 @@ paths:
         - group
       summary: 'Get group details'
       operationId: GetGroup
+      x-mcp-enabled: true
       parameters:
         -
           name: groupId
@@ -1819,6 +1843,7 @@ paths:
         - group
       summary: 'Update group members'
       operationId: UpdateGroupMembers
+      x-mcp-enabled: true
       parameters:
         -
           name: groupId
@@ -3360,6 +3385,7 @@ paths:
         - training
       summary: 'Retrieves information about training'
       operationId: GetTrainingById
+      x-mcp-enabled: true
       parameters:
         -
           name: trainingId
@@ -3396,6 +3422,7 @@ paths:
         - training
       summary: 'Retrieves training session information'
       operationId: GetTrainingSession
+      x-mcp-enabled: true
       parameters:
         -
           name: trainingSessionId
@@ -3437,6 +3464,7 @@ paths:
         - training
       summary: 'Retrieves information about sessions by training id'
       operationId: ListSessionsByTrainingId
+      x-mcp-enabled: true
       parameters:
         -
           name: trainingId
@@ -3692,6 +3720,7 @@ paths:
         - user
       summary: 'Add a new user'
       operationId: AddUser
+      x-mcp-enabled: true
       parameters:
         -
           $ref: '#/components/parameters/returnObject'
@@ -3842,6 +3871,7 @@ paths:
         - user
       summary: 'Update user profile'
       operationId: UpdateUserProfile
+      x-mcp-enabled: true
       parameters:
         -
           name: userId
@@ -4005,6 +4035,7 @@ paths:
         - user
       summary: 'Get user profile'
       operationId: GetUserProfileV2
+      x-mcp-enabled: true
       parameters:
         -
           name: userId
@@ -4164,8 +4195,9 @@ paths:
     get:
       tags:
         - user
-      summary: 'List users'
+      summary: 'List users with pagination and filters'
       operationId: ListUsersV2
+      x-mcp-disabled: true
       parameters:
         -
           $ref: '#/components/parameters/pageSize'
@@ -4353,6 +4385,7 @@ paths:
         - user
       summary: 'Activate/Deactivate user'
       operationId: ChangeUserStatus
+      x-mcp-enabled: true
       parameters:
         -
           name: userId
@@ -4572,6 +4605,7 @@ paths:
         - results
       summary: 'Retrieves a paginated list of results for specific learners in specific courses'
       operationId: ListLearnerResults
+      x-mcp-enabled: true
       parameters:
         -
           $ref: '#/components/parameters/pageSize'
@@ -4668,6 +4702,7 @@ paths:
         - results
       summary: 'Retrieves a paginated list of results for specific learners in specific modules'
       operationId: ListLearnerModulesResults
+      x-mcp-enabled: true
       parameters:
         -
           $ref: '#/components/parameters/pageSize'
@@ -4949,8 +4984,12 @@ paths:
     post:
       tags:
         - user
-      summary: 'Get users list'
+      summary: 'Find users by optional filters'
       operationId: GetPagedUsersList
+      x-mcp-enabled: true
+      x-mcp-read-only: true
+      x-mcp-base-path: /api/v2
+      description: 'Primary user-search tool. This POST is read-only. requestBody.page is required and starts at 1; requestBody.pageSize is optional. To list users in a department, first use ListDepartments to obtain its ID, then call with requestBody: {"page":1,"departments":["<department-id>"]}. Other optional filters are groups, logins, emails, profileFields, and profileFieldsDateRange. Query all users only when explicitly requested.'
       requestBody:
         required: true
         content:
@@ -6192,31 +6231,47 @@ components:
           format: date
       type: object
     GetPagedUsersListRequest:
+      required:
+        - page
       properties:
+        page:
+          type: integer
+          minimum: 1
+          description: Required page number, starting at 1.
+        pageSize:
+          type: integer
+          minimum: 1
+          description: Optional number of users per page. Defaults to 1000 when omitted.
         groups:
           type: array
+          description: Optional group-ID filter.
           items:
             type: string
             format: uuid
         departments:
           type: array
+          description: Optional department-ID filter. Use ListDepartments first to find an ID.
           items:
             type: string
             format: uuid
         logins:
           type: array
+          description: Optional login filter.
           items:
             type: string
         emails:
           type: array
+          description: Optional email filter.
           items:
             type: string
         profileFields:
           type: array
+          description: Optional non-date profile-field filters.
           items:
             $ref: '#/components/schemas/ProfileFieldsFilterItem'
         profileFieldsDateRange:
           type: array
+          description: Optional date-range profile-field filters.
           items:
             $ref: '#/components/schemas/ProfileFieldsDateRangeItem'
       type: object
