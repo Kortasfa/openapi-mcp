@@ -1,88 +1,116 @@
 package openapi2mcp
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
 func typesPtr(types ...string) *openapi3.Types {
-	t := openapi3.Types(types)
-	return &t
+	value := openapi3.Types(types)
+	return &value
 }
 
-func TestSchemaBasic(t *testing.T) {
-	// TODO: Add tests for schema parsing and validation
-	t.Run("dummy", func(t *testing.T) {
-		t.Log("basic schema test placeholder")
-	})
+func schemaRef(schema *openapi3.Schema) *openapi3.SchemaRef {
+	return &openapi3.SchemaRef{Value: schema}
 }
 
-func TestBuildInputSchema_Basic(t *testing.T) {
-	params := openapi3.Parameters{
-		&openapi3.ParameterRef{Value: &openapi3.Parameter{
-			Name:     "foo",
-			In:       "query",
-			Required: true,
-			Schema:   &openapi3.SchemaRef{Value: &openapi3.Schema{Type: typesPtr("string")}},
-		}},
+func TestBuildInputSchemaIncludesRequiredParameters(t *testing.T) {
+	schema := BuildInputSchema(openapi3.Parameters{&openapi3.ParameterRef{Value: &openapi3.Parameter{
+		Name:     "userId",
+		In:       "path",
+		Required: true,
+		Schema:   schemaRef(&openapi3.Schema{Type: typesPtr("string")}),
+	}}}, nil)
+
+	properties := schema["properties"].(map[string]any)
+	if properties["userId"].(map[string]any)["type"] != "string" {
+		t.Fatalf("unexpected parameter schema: %#v", properties["userId"])
 	}
-	schema := BuildInputSchema(params, nil)
-	props, _ := schema["properties"].(map[string]any)
-	if _, ok := props["foo"]; !ok {
-		t.Fatalf("expected property 'foo' in schema")
-	}
-	if req, ok := schema["required"].([]string); !ok || len(req) != 1 || req[0] != "foo" {
-		t.Fatalf("expected 'foo' to be required, got: %v", schema["required"])
+	if !reflect.DeepEqual(schema["required"], []string{"userId"}) {
+		t.Fatalf("unexpected required fields: %#v", schema["required"])
 	}
 }
 
-func TestBuildInputSchema_Empty(t *testing.T) {
-	schema := BuildInputSchema(nil, nil)
-	if props, ok := schema["properties"].(map[string]any); !ok || len(props) != 0 {
-		t.Fatalf("expected empty properties, got: %v", props)
+func TestBuildInputSchemaMarksOptionalQueryParametersAsFilters(t *testing.T) {
+	schema := BuildInputSchema(openapi3.Parameters{&openapi3.ParameterRef{Value: &openapi3.Parameter{
+		Name:   "departmentId",
+		In:     "query",
+		Schema: schemaRef(&openapi3.Schema{Type: typesPtr("string")}),
+	}}}, nil)
+
+	property := schema["properties"].(map[string]any)["departmentId"].(map[string]any)
+	if property["description"] != "Optional query filter. Omit it to return unfiltered results." {
+		t.Fatalf("unexpected filter description: %#v", property["description"])
 	}
 }
 
-func TestBuildInputSchema_Malformed(t *testing.T) {
-	params := openapi3.Parameters{
-		&openapi3.ParameterRef{Value: nil}, // malformed
-	}
-	schema := BuildInputSchema(params, nil)
-	if props, ok := schema["properties"].(map[string]any); !ok || len(props) != 0 {
-		t.Fatalf("expected empty properties for malformed param, got: %v", props)
+func TestBuildInputSchemaEscapesBracketedParameterNames(t *testing.T) {
+	schema := BuildInputSchema(openapi3.Parameters{&openapi3.ParameterRef{Value: &openapi3.Parameter{
+		Name:     "filter[department]",
+		In:       "query",
+		Required: true,
+		Schema:   schemaRef(&openapi3.Schema{Type: typesPtr("string")}),
+	}}}, nil)
+
+	if _, exists := schema["properties"].(map[string]any)["filter_department_"]; !exists {
+		t.Fatalf("escaped property is absent: %#v", schema["properties"])
 	}
 }
 
-func TestBuildInputSchema_RequiredFromBody(t *testing.T) {
+func TestBuildInputSchemaExcludesConfiguredAuthenticationHeader(t *testing.T) {
+	doc := &openapi3.T{Components: &openapi3.Components{SecuritySchemes: openapi3.SecuritySchemes{
+		"bearerAuth": &openapi3.SecuritySchemeRef{Value: &openapi3.SecurityScheme{Type: "http", Scheme: "bearer"}},
+	}}}
+	parameters := openapi3.Parameters{&openapi3.ParameterRef{Value: &openapi3.Parameter{
+		Name:     "Authorization",
+		In:       "header",
+		Required: true,
+		Schema:   schemaRef(&openapi3.Schema{Type: typesPtr("string")}),
+	}}}
+
+	schema := BuildInputSchemaWithContext(parameters, nil, doc)
+	if len(schema["properties"].(map[string]any)) != 0 {
+		t.Fatalf("authentication header must not be an MCP argument: %#v", schema)
+	}
+}
+
+func TestBuildInputSchemaConvertsJSONRequestBody(t *testing.T) {
 	body := &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
 		Required: true,
-		Content: openapi3.Content{
-			"application/json": &openapi3.MediaType{
-				Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{
-					Type: typesPtr("object"),
-					Properties: map[string]*openapi3.SchemaRef{
-						"bar": {Value: &openapi3.Schema{Type: typesPtr("integer")}},
-					},
-					Required: []string{"bar"},
-				}},
+		Content: openapi3.Content{"application/json": &openapi3.MediaType{Schema: schemaRef(&openapi3.Schema{
+			Type: typesPtr("object"),
+			Properties: openapi3.Schemas{
+				"name": schemaRef(&openapi3.Schema{Type: typesPtr("string")}),
 			},
-		},
+			Required: []string{"name"},
+		})}},
 	}}
 	schema := BuildInputSchema(nil, body)
-	props, _ := schema["properties"].(map[string]any)
-	reqBody, ok := props["requestBody"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected property 'requestBody' in schema")
+
+	requestBody := schema["properties"].(map[string]any)["requestBody"].(map[string]any)
+	if requestBody["properties"].(map[string]any)["name"].(map[string]any)["type"] != "string" {
+		t.Fatalf("unexpected request body schema: %#v", requestBody)
 	}
-	reqBodyProps, _ := reqBody["properties"].(map[string]any)
-	if _, ok := reqBodyProps["bar"]; !ok {
-		t.Fatalf("expected property 'bar' in requestBody schema")
+	if !reflect.DeepEqual(schema["required"], []string{"requestBody"}) {
+		t.Fatalf("unexpected required fields: %#v", schema["required"])
 	}
-	if req, ok := reqBody["required"].([]string); !ok || len(req) != 1 || req[0] != "bar" {
-		t.Fatalf("expected 'bar' to be required in requestBody, got: %v", reqBody["required"])
+}
+
+func TestSchemaForPreservesCompositions(t *testing.T) {
+	value := schemaFor(schemaRef(&openapi3.Schema{
+		OneOf: openapi3.SchemaRefs{
+			schemaRef(&openapi3.Schema{Type: typesPtr("string")}),
+			schemaRef(&openapi3.Schema{Type: typesPtr("integer")}),
+		},
+	}), make(map[*openapi3.Schema]bool))
+
+	variants, ok := value["oneOf"].([]any)
+	if !ok || len(variants) != 2 {
+		t.Fatalf("unexpected oneOf: %#v", value["oneOf"])
 	}
-	if req, ok := schema["required"].([]string); !ok || len(req) != 1 || req[0] != "requestBody" {
-		t.Fatalf("expected 'requestBody' to be required, got: %v", schema["required"])
+	if variants[0].(map[string]any)["type"] != "string" || variants[1].(map[string]any)["type"] != "integer" {
+		t.Fatalf("unexpected variants: %#v", variants)
 	}
 }

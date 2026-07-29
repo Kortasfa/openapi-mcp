@@ -1,494 +1,153 @@
-// schema.go
 package openapi2mcp
 
 import (
-	"fmt"
-	"os"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-// escapeParameterName converts parameter names with brackets to MCP-compatible names.
-// For example: "filter[created_at]" becomes "filter_created_at_"
-// The trailing underscore distinguishes escaped names from naturally occurring names.
+// escapeParameterName makes bracketed OpenAPI parameter names valid MCP fields.
 func escapeParameterName(name string) string {
-	if !strings.Contains(name, "[") && !strings.Contains(name, "]") {
-		return name // No escaping needed
-	}
-
-	// Replace brackets with underscores and add trailing underscore
-	escaped := strings.ReplaceAll(name, "[", "_")
-	escaped = strings.ReplaceAll(escaped, "]", "_")
-
-	// Add trailing underscore if not already present to mark as escaped
-	if !strings.HasSuffix(escaped, "_") {
-		escaped += "_"
-	}
-
-	return escaped
+	return strings.NewReplacer("[", "_", "]", "_").Replace(name)
 }
 
-// isAuthenticationHeader determines if a parameter is an authentication-related header
-// that should be automatically injected by the authentication system and excluded from required validation
-func isAuthenticationHeader(param *openapi3.Parameter, doc *openapi3.T) bool {
-	// Only check header parameters
-	if param.In != "header" {
+// buildParameterNameMapping is retained for the upstream request builder. Parameter
+// lookup derives the escaped name directly, so no mapping is necessary.
+func buildParameterNameMapping(openapi3.Parameters) map[string]string {
+	return nil
+}
+
+func isAuthenticationHeader(parameter *openapi3.Parameter, doc *openapi3.T) bool {
+	if parameter.In != "header" || doc == nil || doc.Components == nil {
 		return false
 	}
-
-	// Check if this header matches any authentication scheme in the spec
-	if doc != nil && doc.Components != nil && doc.Components.SecuritySchemes != nil {
-		for _, schemeRef := range doc.Components.SecuritySchemes {
-			if schemeRef.Value != nil {
-				switch schemeRef.Value.Type {
-				case "apiKey":
-					// If this is an API key header, it's handled by authentication system
-					if schemeRef.Value.In == "header" && schemeRef.Value.Name == param.Name {
-						return true
-					}
-				case "http":
-					// HTTP auth schemes (Bearer, Basic) use Authorization header
-					if param.Name == "Authorization" {
-						return true
-					}
-				}
-			}
+	for _, security := range doc.Components.SecuritySchemes {
+		if security == nil || security.Value == nil {
+			continue
 		}
-	}
-
-	// Check for common host headers that are automatically injected
-	paramName := strings.ToLower(param.Name)
-	if strings.Contains(paramName, "host") {
-		return true
-	}
-
-	// Common authentication headers
-	commonAuthHeaders := []string{
-		"authorization",
-		"x-api-key",
-		"api-key",
-		"x-rapidapi-key",
-		"x-rapidapi-host",
-	}
-
-	for _, authHeader := range commonAuthHeaders {
-		if paramName == authHeader {
+		scheme := security.Value
+		if scheme.Type == "http" && strings.EqualFold(parameter.Name, "Authorization") {
+			return true
+		}
+		if scheme.Type == "apiKey" && scheme.In == "header" && strings.EqualFold(scheme.Name, parameter.Name) {
 			return true
 		}
 	}
-
 	return false
 }
 
-// isMessageArrayPattern checks if the oneOf schema represents a common message array pattern
-// used in chat APIs where messages can be system, user, or assistant messages
-func isMessageArrayPattern(oneOf []*openapi3.SchemaRef) bool {
-	if len(oneOf) < 2 {
-		return false
+// schemaFor converts the OpenAPI schema subset accepted by the JSON Schema tool validator.
+// References have already been resolved by kin-openapi while loading the document.
+func schemaFor(reference *openapi3.SchemaRef, visiting map[*openapi3.Schema]bool) map[string]any {
+	if reference == nil || reference.Value == nil {
+		return map[string]any{}
 	}
-
-	// Check if we have SystemMessage and UserMessage patterns
-	hasSystemMessage := false
-	hasUserMessage := false
-
-	for _, schemaRef := range oneOf {
-		if schemaRef == nil {
-			continue
-		}
-
-		// First check the schema reference name
-		if schemaRef.Ref != "" {
-			refName := schemaRef.Ref
-			if strings.Contains(refName, "SystemMessage") || strings.Contains(refName, "system") {
-				hasSystemMessage = true
-			}
-			if strings.Contains(refName, "UserMessage") || strings.Contains(refName, "user") {
-				hasUserMessage = true
-			}
-		}
-
-		// Then check the actual schema value if available
-		if schemaRef.Value != nil {
-			// Check if this schema has a role property with system or user enum
-			if schemaRef.Value.Properties != nil {
-				if roleProp, exists := schemaRef.Value.Properties["role"]; exists && roleProp.Value != nil {
-					if roleProp.Value.Enum != nil {
-						for _, enumVal := range roleProp.Value.Enum {
-							if str, ok := enumVal.(string); ok {
-								if str == "system" {
-									hasSystemMessage = true
-								} else if str == "user" {
-									hasUserMessage = true
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// If we found the pattern by reference names, that's sufficient
-	if hasSystemMessage && hasUserMessage {
-		return true
-	}
-
-	// Additional check: if we have exactly 2 schemas and they both have role properties,
-	// it's likely a message pattern even if we can't detect the specific roles
-	if len(oneOf) == 2 {
-		bothHaveRole := true
-		for _, schemaRef := range oneOf {
-			if schemaRef == nil || schemaRef.Value == nil {
-				bothHaveRole = false
-				break
-			}
-			if schemaRef.Value.Properties == nil {
-				bothHaveRole = false
-				break
-			}
-			if _, exists := schemaRef.Value.Properties["role"]; !exists {
-				bothHaveRole = false
-				break
-			}
-		}
-		if bothHaveRole {
-			return true
-		}
-	}
-
-	return false
-}
-
-// resolveSchemaRef resolves a schema reference to get the actual schema
-func resolveSchemaRef(schemaRef *openapi3.SchemaRef, doc *openapi3.T) *openapi3.Schema {
-	if schemaRef == nil {
-		return nil
-	}
-
-	// If it's a reference, try to resolve it from the document
-	if schemaRef.Ref != "" && doc != nil && doc.Components != nil && doc.Components.Schemas != nil {
-		// Extract the schema name from the reference
-		refPath := strings.TrimPrefix(schemaRef.Ref, "#/components/schemas/")
-		if resolvedRef, exists := doc.Components.Schemas[refPath]; exists && resolvedRef.Value != nil {
-			return resolvedRef.Value
-		}
-	}
-
-	// Return the value if available
-	return schemaRef.Value
-}
-
-func mergeOneOfSchemasWithVisited(oneOf []*openapi3.SchemaRef, doc *openapi3.T, visited map[*openapi3.Schema]bool) map[string]any {
-	merged := map[string]any{
-		"type": "object",
-	}
-
-	allProperties := make(map[string]map[string]any)
-	var allRequired []string
-	requiredCount := make(map[string]int)
-	totalSchemas := 0
-
-	// Process each schema in oneOf
-	for _, schemaRef := range oneOf {
-		schema := resolveSchemaRef(schemaRef, doc)
-		if schema == nil {
-			continue
-		}
-
-		totalSchemas++
-
-		// Extract properties from this schema
-		if schema.Properties != nil {
-			for propName, propSchemaRef := range schema.Properties {
-				if propSchema := extractPropertyWithContextAndVisited(propSchemaRef, doc, visited); propSchema != nil {
-					allProperties[propName] = propSchema
-				}
-			}
-		}
-
-		// Track required fields
-		for _, req := range schema.Required {
-			requiredCount[req]++
-		}
-	}
-
-	// Set properties in merged schema
-	if len(allProperties) > 0 {
-		merged["properties"] = allProperties
-	}
-
-	// A field is required only if it's required in ALL schemas
-	for field, count := range requiredCount {
-		if count == totalSchemas {
-			allRequired = append(allRequired, field)
-		}
-	}
-
-	if len(allRequired) > 0 {
-		merged["required"] = allRequired
-	}
-
-	// Add a description explaining this is a oneOf merge
-	merged["description"] = fmt.Sprintf("Accepts any of %d possible schema variants (oneOf)", totalSchemas)
-
-	return merged
-}
-
-// buildParameterNameMapping creates a mapping from escaped parameter names to original names.
-// This is used to reverse the escaping when looking up parameter values.
-func buildParameterNameMapping(params openapi3.Parameters) map[string]string {
-	mapping := make(map[string]string)
-	for _, paramRef := range params {
-		if paramRef == nil || paramRef.Value == nil {
-			continue
-		}
-		p := paramRef.Value
-		escaped := escapeParameterName(p.Name)
-		if escaped != p.Name {
-			mapping[escaped] = p.Name
-		}
-	}
-	return mapping
-}
-
-// extractPropertyWithContext recursively extracts a property schema from an OpenAPI SchemaRef with document context.
-// Handles allOf, oneOf, anyOf, discriminator, default, example, and basic OpenAPI 3.1 features.
-func extractPropertyWithContext(s *openapi3.SchemaRef, doc *openapi3.T) map[string]any {
-	return extractPropertyWithContextAndVisited(s, doc, make(map[*openapi3.Schema]bool))
-}
-
-func extractPropertyWithContextAndVisited(s *openapi3.SchemaRef, doc *openapi3.T, visited map[*openapi3.Schema]bool) map[string]any {
-	if s == nil || s.Value == nil {
-		return nil
-	}
-
-	val := s.Value
-
-	// Check for circular references
-	if visited[val] {
-		// Return a reference or basic type to break the cycle
-		if val.Type != nil && len(*val.Type) > 0 {
-			return map[string]any{"type": (*val.Type)[0]}
-		}
+	schema := reference.Value
+	if visiting[schema] {
 		return map[string]any{"type": "object"}
 	}
+	visiting[schema] = true
+	defer delete(visiting, schema)
 
-	// Mark this schema as being processed
-	visited[val] = true
-	defer func() { delete(visited, val) }()
+	result := map[string]any{}
+	if types := schema.Type.Slice(); len(types) == 1 {
+		result["type"] = types[0]
+	} else if len(types) > 1 {
+		result["type"] = types
+	}
+	copySchemaMetadata(result, schema)
+	addCompositions(result, "allOf", schema.AllOf, visiting)
+	addCompositions(result, "anyOf", schema.AnyOf, visiting)
+	addCompositions(result, "oneOf", schema.OneOf, visiting)
 
-	prop := map[string]any{}
-	// Handle allOf (merge all subschemas)
-	if len(val.AllOf) > 0 {
-		merged := map[string]any{}
-		for _, sub := range val.AllOf {
-			subProp := extractPropertyWithContextAndVisited(sub, doc, visited)
-			for k, v := range subProp {
-				merged[k] = v
-			}
+	if len(schema.Properties) > 0 {
+		properties := make(map[string]any, len(schema.Properties))
+		for name, property := range schema.Properties {
+			properties[name] = schemaFor(property, visiting)
 		}
-		for k, v := range merged {
-			prop[k] = v
+		result["properties"] = properties
+		if len(schema.Required) > 0 {
+			result["required"] = schema.Required
 		}
 	}
-	// Handle oneOf with full support including schema reference resolution
-	if len(val.OneOf) > 0 {
-		// Check if this is a message array pattern (common in chat APIs)
-		if isMessageArrayPattern(val.OneOf) {
-			// Create a union type that accepts any of the message types
-			unionSchema := map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"role": map[string]any{
-						"type": "string",
-						"enum": []string{"system", "user", "assistant"},
-					},
-					"content": map[string]any{
-						"type": "string",
-					},
-				},
-				"required": []string{"role", "content"},
-			}
-			return unionSchema
-		} else {
-			// Use enhanced oneOf handling that merges schemas for better MCP compatibility
-			return mergeOneOfSchemasWithVisited(val.OneOf, doc, visited)
-		}
+	if schema.Items != nil {
+		result["items"] = schemaFor(schema.Items, visiting)
 	}
-	if len(val.AnyOf) > 0 {
-		fmt.Fprintf(os.Stderr, "[WARN] anyOf used in schema at %p. Only basic support is provided.\n", val)
-		anyOf := []any{}
-		for _, sub := range val.AnyOf {
-			anyOf = append(anyOf, extractPropertyWithContextAndVisited(sub, doc, visited))
-		}
-		prop["anyOf"] = anyOf
+	if schema.AdditionalProperties.Has != nil {
+		result["additionalProperties"] = *schema.AdditionalProperties.Has
+	} else if schema.AdditionalProperties.Schema != nil {
+		result["additionalProperties"] = schemaFor(schema.AdditionalProperties.Schema, visiting)
 	}
-	// Handle discriminator (OpenAPI 3.0/3.1)
-	if val.Discriminator != nil {
-		fmt.Fprintf(os.Stderr, "[WARN] discriminator used in schema at %p. Only basic support is provided.\n", val)
-		prop["discriminator"] = val.Discriminator
-	}
-	// Type, format, description, enum, default, example
-	if val.Type != nil && len(*val.Type) > 0 {
-		// Use the first type if multiple types are specified
-		prop["type"] = (*val.Type)[0]
-	}
-	if val.Format != "" {
-		prop["format"] = val.Format
-	}
-	if val.Description != "" {
-		prop["description"] = val.Description
-	}
-	if len(val.Enum) > 0 {
-		prop["enum"] = val.Enum
-	}
-	if val.Default != nil {
-		prop["default"] = val.Default
-	}
-	if val.Example != nil {
-		prop["example"] = val.Example
-	}
-	// Object properties
-	if val.Type != nil && val.Type.Is("object") && val.Properties != nil {
-		objProps := map[string]any{}
-		for name, sub := range val.Properties {
-			objProps[name] = extractPropertyWithContextAndVisited(sub, doc, visited)
-		}
-		prop["properties"] = objProps
-		if len(val.Required) > 0 {
-			prop["required"] = val.Required
-		}
-	}
-	// Array items
-	if val.Type != nil && val.Type.Is("array") && val.Items != nil {
-		prop["items"] = extractPropertyWithContextAndVisited(val.Items, doc, visited)
-	}
-	return prop
+	return result
 }
 
-// BuildInputSchema converts OpenAPI parameters and request body schema to a single JSON Schema object for MCP tool input validation.
-// Returns a JSON Schema as a map[string]any.
-// Example usage for BuildInputSchema:
-//
-//	params := ... // openapi3.Parameters from an operation
-//	reqBody := ... // *openapi3.RequestBodyRef from an operation
-//	schema := openapi2mcp.BuildInputSchema(params, reqBody)
-//	// schema is a map[string]any representing the JSON schema for tool input
-func BuildInputSchema(params openapi3.Parameters, requestBody *openapi3.RequestBodyRef) map[string]any {
-	return BuildInputSchemaWithContext(params, requestBody, nil)
+func copySchemaMetadata(result map[string]any, schema *openapi3.Schema) {
+	if schema.Format != "" {
+		result["format"] = schema.Format
+	}
+	if schema.Description != "" {
+		result["description"] = schema.Description
+	}
+	if len(schema.Enum) > 0 {
+		result["enum"] = schema.Enum
+	}
+	if schema.Default != nil {
+		result["default"] = schema.Default
+	}
+	if schema.Example != nil {
+		result["examples"] = []any{schema.Example}
+	}
 }
 
-// BuildInputSchemaWithContext converts OpenAPI parameters and request body schema to a single JSON Schema object for MCP tool input validation with document context.
-// Returns a JSON Schema as a map[string]any.
-func BuildInputSchemaWithContext(params openapi3.Parameters, requestBody *openapi3.RequestBodyRef, doc *openapi3.T) map[string]any {
-	schema := map[string]any{
-		"type":       "object",
-		"properties": map[string]any{},
+func addCompositions(result map[string]any, keyword string, references openapi3.SchemaRefs, visiting map[*openapi3.Schema]bool) {
+	if len(references) == 0 {
+		return
 	}
-	properties := schema["properties"].(map[string]any)
+	schemas := make([]any, 0, len(references))
+	for _, reference := range references {
+		schemas = append(schemas, schemaFor(reference, visiting))
+	}
+	result[keyword] = schemas
+}
+
+// BuildInputSchema converts OpenAPI parameters and a JSON request body to MCP input schema.
+func BuildInputSchema(parameters openapi3.Parameters, requestBody *openapi3.RequestBodyRef) map[string]any {
+	return BuildInputSchemaWithContext(parameters, requestBody, nil)
+}
+
+func BuildInputSchemaWithContext(parameters openapi3.Parameters, requestBody *openapi3.RequestBodyRef, doc *openapi3.T) map[string]any {
+	properties := make(map[string]any)
 	var required []string
-
-	// Parameters (query, path, header, cookie)
-	for _, paramRef := range params {
-		if paramRef == nil || paramRef.Value == nil {
+	for _, reference := range parameters {
+		if reference == nil || reference.Value == nil {
 			continue
 		}
-		p := paramRef.Value
-		if p.Schema != nil && p.Schema.Value != nil {
-			if p.Schema.Value.Type != nil && p.Schema.Value.Type.Is("string") && p.Schema.Value.Format == "binary" {
-				fmt.Fprintf(os.Stderr, "[WARN] Parameter '%s' uses 'string' with 'binary' format. Non-JSON body types are not fully supported.\n", p.Name)
-			}
-			prop := extractPropertyWithContext(p.Schema, doc)
-			description := p.Description
-			if !p.Required && p.In == "query" {
-				filterDescription := "Optional query filter. Omit it to return unfiltered results."
-				if description != "" {
-					description += " " + filterDescription
-				} else {
-					description = filterDescription
-				}
-			}
-			if description != "" {
-				prop["description"] = description
-			}
-			// Use escaped parameter name for MCP schema compatibility
-			escapedName := escapeParameterName(p.Name)
-			properties[escapedName] = prop
-			if p.Required && !isAuthenticationHeader(p, doc) {
-				required = append(required, escapedName)
-			}
+		parameter := reference.Value
+		if parameter.Schema == nil || isAuthenticationHeader(parameter, doc) {
+			continue
 		}
-		// Warn about unsupported parameter locations
-		if p.In != "query" && p.In != "path" && p.In != "header" && p.In != "cookie" {
-			fmt.Fprintf(os.Stderr, "[WARN] Parameter '%s' uses unsupported location '%s'.\n", p.Name, p.In)
+		property := schemaFor(parameter.Schema, make(map[*openapi3.Schema]bool))
+		if parameter.Description != "" {
+			property["description"] = parameter.Description
+		} else if parameter.In == "query" && !parameter.Required {
+			property["description"] = "Optional query filter. Omit it to return unfiltered results."
+		}
+		name := escapeParameterName(parameter.Name)
+		properties[name] = property
+		if parameter.Required {
+			required = append(required, name)
 		}
 	}
 
-	// Request body (application/json and application/vnd.api+json)
 	if requestBody != nil && requestBody.Value != nil {
-		for mtName := range requestBody.Value.Content {
-			// Check base content type without parameters
-			baseMT := mtName
-			if idx := strings.IndexByte(mtName, ';'); idx > 0 {
-				baseMT = strings.TrimSpace(mtName[:idx])
-			}
-			supportedTypes := []string{
-				"application/json",
-				"application/vnd.api+json",
-				"application/xml",
-				"text/xml",
-				"text/plain",
-				"multipart/form-data",
-				"application/x-www-form-urlencoded",
-			}
-
-			isSupported := false
-			for _, supportedType := range supportedTypes {
-				if baseMT == supportedType {
-					isSupported = true
-					break
-				}
-			}
-
-			if !isSupported {
-				fmt.Fprintf(os.Stderr, "[WARN] Request body uses media type '%s'. Supported types: %v\n", mtName, supportedTypes)
-			}
-		}
-		// Try to find a suitable content type in order of preference
-		var mt *openapi3.MediaType
-		var bodyDescription string
-
-		preferredTypes := []struct {
-			contentType string
-			description string
-		}{
-			{"application/json", "The JSON request body."},
-			{"application/vnd.api+json", "The JSON API request body."},
-			{"application/xml", "The XML request body (provide as string)."},
-			{"text/xml", "The XML request body (provide as string)."},
-			{"text/plain", "The plain text request body."},
-			{"multipart/form-data", "The form data request body (provide as object with fields)."},
-			{"application/x-www-form-urlencoded", "The URL-encoded form request body (provide as object)."},
-		}
-
-		for _, pref := range preferredTypes {
-			if mt = getContentByType(requestBody.Value.Content, pref.contentType); mt != nil {
-				bodyDescription = pref.description
-				break
-			}
-		}
-
-		if mt != nil && mt.Schema != nil && mt.Schema.Value != nil {
-			bodyProp := extractPropertyWithContext(mt.Schema, doc)
-			bodyProp["description"] = bodyDescription
-			properties["requestBody"] = bodyProp
+		if mediaType := getContentByType(requestBody.Value.Content, "application/json"); mediaType != nil && mediaType.Schema != nil {
+			properties["requestBody"] = schemaFor(mediaType.Schema, make(map[*openapi3.Schema]bool))
 			if requestBody.Value.Required {
 				required = append(required, "requestBody")
 			}
 		}
 	}
-
+	schema := map[string]any{"type": "object", "properties": properties}
 	if len(required) > 0 {
 		schema["required"] = required
 	}

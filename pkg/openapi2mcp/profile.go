@@ -14,7 +14,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-const CompiledProfileVersion = 1
+const CompiledProfileVersion = 2
 
 type CompiledTool struct {
 	OperationID string         `json:"operationId"`
