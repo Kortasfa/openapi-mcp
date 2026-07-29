@@ -1252,7 +1252,7 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 		}
 
 		// Database health check every 50 operations to prevent connection timeout
-		if processedCount%50 == 0 {
+		if dbSpec != nil && processedCount%50 == 0 {
 			// Check database connection health during long-running operations
 			if err := database.EnsureConnection(); err != nil {
 				fmt.Fprintf(os.Stderr, "[WARN] Database connection issue at operation %d/%d: %v\n", processedCount, actualOpsCount, err)
