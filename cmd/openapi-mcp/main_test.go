@@ -19,7 +19,7 @@ paths: {}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := openapi2mcp.NewServer("test", "1.0.0", doc)
+	server := createServerWithOptions("test", "1.0.0", doc, nil, "", false)
 	handler := openapi2mcp.HandlerForStreamableHTTP(server, "/mcp")
 	recorder := httptest.NewRecorder()
 	body, _ := json.Marshal(map[string]any{

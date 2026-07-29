@@ -69,6 +69,31 @@ make bin/openapi-mcp
 
 The binary is written to `bin/openapi-mcp`.
 
+## Production workflow
+
+Use one binary in two modes. `compile` validates an OpenAPI source, applies its
+MCP curation metadata, and writes a versioned profile. `serve` hosts that
+profile over stateless Streamable HTTP.
+
+```sh
+# CI or an admin job: compile and atomically replace the profile file.
+bin/openapi-mcp compile \
+  --output /srv/openapi-mcp/learn.profile.json \
+  specs/rest-api.yaml
+
+# Runtime: no upstream token is configured here.
+bin/openapi-mcp serve \
+  --profile /srv/openapi-mcp/learn.profile.json \
+  --http :8080 \
+  --base-url https://test.mint.local.learn.ispringdev.com/api/v3
+```
+
+`serve` checks the profile file every two seconds and atomically activates a
+valid replacement. An invalid profile is rejected and the previous profile
+remains active. The MCP client connects to `http://host:8080/mcp` and supplies
+its own `Authorization: Bearer <access-token>` header. `GET /health` reports
+the active profile checksum and tool count.
+
 ## Run an MCP server
 
 Start a stateless Streamable HTTP endpoint at `/mcp`:
@@ -93,7 +118,7 @@ arguments.
 
 ## iSpring Learn
 
-The bundled [`specs/rest-api.yaml`](specs/rest-api.yaml) produces 143 MCP tools
+The bundled [`specs/rest-api.yaml`](specs/rest-api.yaml) produces 32 MCP tools
 from the iSpring Learn REST API. Obtain an iSpring access token outside the MCP
 server, then configure the MCP client to send it as an HTTP Bearer header. The
 server forwards that header to iSpring for every API tool call.
@@ -114,8 +139,9 @@ or token-issuing component. They never reach this server or an MCP tool call.
 ### 2. Start the server
 
 ```sh
-OPENAPI_BASE_URL='https://test.mint.local.learn.ispringdev.com/api/v3' \
-  bin/openapi-mcp --http=:8080 specs/rest-api.yaml
+bin/openapi-mcp compile --output /srv/openapi-mcp/learn.profile.json specs/rest-api.yaml
+bin/openapi-mcp serve --profile /srv/openapi-mcp/learn.profile.json --http :8080 \
+  --base-url 'https://test.mint.local.learn.ispringdev.com/api/v3'
 ```
 
 The server is available at `http://localhost:8080/mcp`. `OPENAPI_BASE_URL` is
@@ -143,18 +169,18 @@ openapi-mcp [flags] lint <openapi-spec-path>
 openapi-mcp [flags] filter <openapi-spec-path>
 ```
 
-| Flag | Environment variable | Purpose |
-| --- | --- | --- |
-| `--http=:8080` | — | Serve stateless Streamable HTTP at `/mcp`. |
-| `--base-url` | `OPENAPI_BASE_URL` | Override the OpenAPI server URL. |
-| `--api-key` | `API_KEY` | Set the downstream API key. |
-| `--basic-auth` | `BASIC_AUTH` | Set downstream Basic credentials. |
-| `--tag` | `OPENAPI_TAG` | Include operations with a tag (repeatable). |
-| `--include-desc-regex` | `INCLUDE_DESC_REGEX` | Include operations matching a description. |
-| `--exclude-desc-regex` | `EXCLUDE_DESC_REGEX` | Exclude operations matching a description. |
-| `--dry-run` | — | Print generated tool schemas and exit. |
-| `--summary` | — | Print the generated-tool summary. |
-| `--doc=tools.md` | — | Generate tool documentation and exit. |
+| Flag                   | Environment variable | Purpose                                     |
+| ---------------------- | -------------------- | ------------------------------------------- |
+| `--http=:8080`         | —                    | Serve stateless Streamable HTTP at `/mcp`.  |
+| `--base-url`           | `OPENAPI_BASE_URL`   | Override the OpenAPI server URL.            |
+| `--api-key`            | `API_KEY`            | Set the downstream API key.                 |
+| `--basic-auth`         | `BASIC_AUTH`         | Set downstream Basic credentials.           |
+| `--tag`                | `OPENAPI_TAG`        | Include operations with a tag (repeatable). |
+| `--include-desc-regex` | `INCLUDE_DESC_REGEX` | Include operations matching a description.  |
+| `--exclude-desc-regex` | `EXCLUDE_DESC_REGEX` | Exclude operations matching a description.  |
+| `--dry-run`            | —                    | Print generated tool schemas and exit.      |
+| `--summary`            | —                    | Print the generated-tool summary.           |
+| `--doc=tools.md`       | —                    | Generate tool documentation and exit.       |
 
 Examples:
 
@@ -176,7 +202,3 @@ bin/openapi-mcp --http=:8080 --tag=Users specs/rest-api.yaml
 - Put the MCP endpoint behind TLS and your product's authentication proxy.
 - Review exposed operations with `--dry-run` or `--summary` before deployment.
 - This is transparent token forwarding, not product-level RBAC or tool filtering.
-
-## License
-
-[MIT](LICENSE)

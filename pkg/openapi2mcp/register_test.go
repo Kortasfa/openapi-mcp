@@ -33,6 +33,38 @@ func TestRegisterOpenAPIToolsWithOfficialSDK(t *testing.T) {
 	}
 }
 
+func TestRegisterOpenAPIToolsFiltersByTag(t *testing.T) {
+	doc := &openapi3.T{
+		Info:  &openapi3.Info{Title: "Test API", Version: "1.0.0"},
+		Paths: openapi3.NewPaths(),
+	}
+	doc.Paths.Set("/users", &openapi3.PathItem{Get: &openapi3.Operation{OperationID: "listUsers", Tags: []string{"users"}}})
+	doc.Paths.Set("/groups", &openapi3.PathItem{Get: &openapi3.Operation{OperationID: "listGroups", Tags: []string{"groups"}}})
+
+	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
+	RegisterOpenAPITools(server, ExtractOpenAPIOperations(doc), doc, &ToolGenOptions{TagFilter: []string{"users"}})
+	handler := HandlerForStreamableHTTP(server, "/mcp")
+
+	body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json, text/event-stream")
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("tools/list failed: %d %s", recorder.Code, recorder.Body.String())
+	}
+	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"name":"listUsers"`)) {
+		t.Fatalf("filtered tool missing: %s", recorder.Body.String())
+	}
+	if bytes.Contains(recorder.Body.Bytes(), []byte(`"name":"listGroups"`)) {
+		t.Fatalf("unfiltered tool was registered: %s", recorder.Body.String())
+	}
+}
+
 func TestRegisterOpenAPIToolsForwardsMCPBearerToken(t *testing.T) {
 	const token = "client-access-token"
 	t.Setenv("BEARER_TOKEN", "server-fallback-token")
