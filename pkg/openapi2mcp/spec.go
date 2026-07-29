@@ -69,7 +69,6 @@ func ExtractOpenAPIOperations(doc *openapi3.T) []OpenAPIOperation {
 				Parameters:  mergeParameters(item.Parameters, operation.Parameters),
 				RequestBody: operation.RequestBody,
 				Tags:        operation.Tags,
-				Security:    operationSecurity(doc, operation),
 				MCPReadOnly: extensionEnabled(operation.Extensions, "x-mcp-read-only"),
 				MCPBasePath: extensionString(operation.Extensions, "x-mcp-base-path"),
 			})
@@ -114,13 +113,6 @@ func mergeParameters(pathParameters, operationParameters openapi3.Parameters) op
 
 func parameterKey(parameter *openapi3.Parameter) string {
 	return parameter.In + "\x00" + parameter.Name
-}
-
-func operationSecurity(doc *openapi3.T, operation *openapi3.Operation) openapi3.SecurityRequirements {
-	if operation.Security != nil {
-		return *operation.Security
-	}
-	return doc.Security
 }
 
 func mcpEnabled(doc *openapi3.T, operation *openapi3.Operation) bool {

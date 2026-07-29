@@ -19,7 +19,7 @@ type upstreamRequest struct {
 	URL     string
 }
 
-func buildUpstreamRequest(ctx context.Context, doc *openapi3.T, baseURLs []string, operation OpenAPIOperation, args map[string]any, parameterNames map[string]string) (*upstreamRequest, error) {
+func buildUpstreamRequest(ctx context.Context, doc *openapi3.T, baseURLs []string, operation OpenAPIOperation, args map[string]any) (*upstreamRequest, error) {
 	if len(baseURLs) == 0 {
 		return nil, fmt.Errorf("at least one upstream base URL is required")
 
@@ -31,7 +31,7 @@ func buildUpstreamRequest(ctx context.Context, doc *openapi3.T, baseURLs []strin
 			continue
 		}
 		parameter := parameterRef.Value
-		value, present := getParameterValue(args, parameter.Name, parameterNames)
+		value, present := getParameterValue(args, parameter.Name)
 		if !present {
 			continue
 		}
@@ -62,8 +62,8 @@ func buildUpstreamRequest(ctx context.Context, doc *openapi3.T, baseURLs []strin
 		request.Header.Set("Content-Type", contentType)
 	}
 	request.Header.Set("Accept", "application/json, application/vnd.api+json")
-	applyHeaderParameters(request, doc, operation.Parameters, args, parameterNames)
-	applyCookieParameters(request, operation.Parameters, args, parameterNames)
+	applyHeaderParameters(request, doc, operation.Parameters, args)
+	applyCookieParameters(request, operation.Parameters, args)
 	return &upstreamRequest{Request: request, Body: body, URL: fullURL}, nil
 }
 
@@ -98,7 +98,7 @@ func marshalRequestBody(requestBody *openapi3.RequestBodyRef, args map[string]an
 	return encoded, contentType, err
 }
 
-func applyHeaderParameters(request *http.Request, doc *openapi3.T, parameters openapi3.Parameters, args map[string]any, parameterNames map[string]string) {
+func applyHeaderParameters(request *http.Request, doc *openapi3.T, parameters openapi3.Parameters, args map[string]any) {
 	headerNames := make(map[string]struct{})
 	for _, parameterRef := range parameters {
 		if parameterRef == nil || parameterRef.Value == nil || parameterRef.Value.In != "header" {
@@ -106,7 +106,7 @@ func applyHeaderParameters(request *http.Request, doc *openapi3.T, parameters op
 		}
 		parameter := parameterRef.Value
 		headerNames[parameter.Name] = struct{}{}
-		if value, present := getParameterValue(args, parameter.Name, parameterNames); present {
+		if value, present := getParameterValue(args, parameter.Name); present {
 			integer := parameter.Schema != nil && parameter.Schema.Value != nil && parameter.Schema.Value.Type != nil && parameter.Schema.Value.Type.Is("integer")
 			request.Header.Set(parameter.Name, formatParameterValue(value, integer))
 		}
@@ -125,14 +125,14 @@ func applyHeaderParameters(request *http.Request, doc *openapi3.T, parameters op
 	}
 }
 
-func applyCookieParameters(request *http.Request, parameters openapi3.Parameters, args map[string]any, parameterNames map[string]string) {
+func applyCookieParameters(request *http.Request, parameters openapi3.Parameters, args map[string]any) {
 	var pairs []string
 	for _, parameterRef := range parameters {
 		if parameterRef == nil || parameterRef.Value == nil || parameterRef.Value.In != "cookie" {
 			continue
 		}
 		parameter := parameterRef.Value
-		value, present := getParameterValue(args, parameter.Name, parameterNames)
+		value, present := getParameterValue(args, parameter.Name)
 		if !present {
 			continue
 		}

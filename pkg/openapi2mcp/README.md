@@ -1,64 +1,30 @@
-# openapi2mcp Go Library
+# `openapi2mcp`
 
-This package provides a Go library for converting OpenAPI 3.x specifications into MCP (Model Context Protocol) tool servers.
+This package turns a curated OpenAPI 3.x document into MCP tools. It does not run an MCP transport or manage credentials.
 
-## Installation
+## Flow
 
-```bash
-go get github.com/ubermorgenland/openapi-mcp/pkg/openapi2mcp
-```
+1. `spec.go` loads and validates the OpenAPI document, then selects operations marked for MCP.
+2. `schema.go` creates the JSON Schema for each tool input.
+3. `profile.go` stores the selected operations and schemas in a versioned compiled profile.
+4. `registrar.go` registers tools on an official MCP Go SDK server.
+5. `request.go` translates a tool call into an upstream HTTP request.
+6. `http_client.go` forwards the client `Authorization` header to that request.
+7. `response.go` converts the upstream HTTP response into an MCP tool result.
 
-For direct access to MCP types and tools, use the official SDK:
-```bash
-go get github.com/modelcontextprotocol/go-sdk/mcp
-```
+The root CLI owns stateless Streamable HTTP and hot-reloads compiled profiles. See the root `README.md` for deployment commands.
 
-## Usage
+## Library usage
 
 ```go
-package main
-
-import (
-        "log"
-        "github.com/ubermorgenland/openapi-mcp/pkg/openapi2mcp"
-)
-
-func main() {
-        // Load OpenAPI spec
-        doc, err := openapi2mcp.LoadOpenAPISpec("openapi.yaml")
-        if err != nil {
-                log.Fatal(err)
-        }
-
-        // Create MCP server
-        srv := openapi2mcp.NewServer("myapi", doc.Info.Version, doc)
-
-        // Serve over HTTP (StreamableHTTP is now the default)
-        if err := openapi2mcp.ServeStreamableHTTP(srv, ":8080", "/mcp"); err != nil {
-                log.Fatal(err)
-        }
-
-        // Or serve over stdio
-        // if err := openapi2mcp.ServeStdio(srv); err != nil {
-        //     log.Fatal(err)
-        // }
+doc, err := openapi2mcp.LoadOpenAPISpec("openapi.yaml")
+if err != nil {
+	log.Fatal(err)
 }
+
+server := mcp.NewServer(&mcp.Implementation{Name: "my-api", Version: doc.Info.Version}, nil)
+operations := openapi2mcp.ExtractOpenAPIOperations(doc)
+openapi2mcp.RegisterOpenAPITools(server, operations, doc, nil)
 ```
 
-## Features
-
-- Convert OpenAPI 3.x specifications to MCP tool servers
-- Support for stateless Streamable HTTP and stdio transports through the official MCP Go SDK
-- Automatic tool generation from OpenAPI operations
-- Built-in validation and error handling
-- AI-optimized responses with structured output
-
-## API Documentation
-
-See [GoDoc](https://pkg.go.dev/github.com/ubermorgenland/openapi-mcp/pkg/openapi2mcp) for complete API documentation.
-
-### HTTP Client Development
-
-When using HTTP mode, openapi-mcp serves the official MCP Go SDK's stateless Streamable HTTP handler. Clients send independent POST requests to the same endpoint without session management.
-
-See the [current Streamable HTTP specification](https://modelcontextprotocol.io/specification/latest/basic/transports#streamable-http) for protocol details.
+The application creates the SDK's `mcp.NewStreamableHTTPHandler` itself. This keeps the transport and any authentication policy outside the OpenAPI conversion package.

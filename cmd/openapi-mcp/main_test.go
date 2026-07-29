@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/ubermorgenland/openapi-mcp/pkg/openapi2mcp"
 )
 
@@ -20,7 +21,9 @@ paths: {}`)
 		t.Fatal(err)
 	}
 	server := createServerWithOptions("test", "1.0.0", doc, nil, "", false)
-	handler := openapi2mcp.HandlerForStreamableHTTP(server, "/mcp")
+	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
+		Stateless: true, JSONResponse: true, PropagateRequestCancellation: true,
+	})
 	recorder := httptest.NewRecorder()
 	body, _ := json.Marshal(map[string]any{
 		"jsonrpc": "2.0", "id": 1, "method": "server/discover", "params": map[string]any{},

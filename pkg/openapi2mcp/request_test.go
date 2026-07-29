@@ -34,7 +34,7 @@ func TestBuildUpstreamRequestMapsOpenAPIInputs(t *testing.T) {
 		"requestBody":   map[string]any{"name": "Ada"},
 	}
 
-	upstream, err := buildUpstreamRequest(context.Background(), doc, []string{"https://api.example.test/api/v3"}, operation, arguments, buildParameterNameMapping(operation.Parameters))
+	upstream, err := buildUpstreamRequest(context.Background(), doc, []string{"https://api.example.test/api/v3"}, operation, arguments)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestBuildUpstreamRequestMapsOpenAPIInputs(t *testing.T) {
 
 func TestBuildUpstreamRequestUsesOperationBasePath(t *testing.T) {
 	operation := OpenAPIOperation{Path: "/user/list", Method: "POST", MCPBasePath: "/api/v2"}
-	upstream, err := buildUpstreamRequest(context.Background(), nil, []string{"https://tenant.example.test/api/v3"}, operation, map[string]any{}, nil)
+	upstream, err := buildUpstreamRequest(context.Background(), nil, []string{"https://tenant.example.test/api/v3"}, operation, map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}

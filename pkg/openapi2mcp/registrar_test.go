@@ -43,7 +43,7 @@ func TestRegisterOpenAPIToolsFiltersByTag(t *testing.T) {
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
 	RegisterOpenAPITools(server, ExtractOpenAPIOperations(doc), doc, &ToolGenOptions{TagFilter: []string{"users"}})
-	handler := HandlerForStreamableHTTP(server, "/mcp")
+	handler := testStreamableHandler(server)
 
 	body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": map[string]any{}})
 	if err != nil {
@@ -107,7 +107,7 @@ func TestRegisterOpenAPIToolsForwardsMCPBearerToken(t *testing.T) {
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
 	RegisterOpenAPITools(server, ExtractOpenAPIOperations(doc), doc, nil)
-	handler := HandlerForStreamableHTTP(server, "/mcp")
+	handler := testStreamableHandler(server)
 
 	body, err := json.Marshal(map[string]any{
 		"jsonrpc": "2.0",
@@ -177,7 +177,7 @@ func TestWriteOperationRequiresConfirmationBeforeRequest(t *testing.T) {
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
 	RegisterOpenAPITools(server, ExtractOpenAPIOperations(doc), doc, nil)
-	handler := HandlerForStreamableHTTP(server, "/mcp")
+	handler := testStreamableHandler(server)
 
 	body, err := json.Marshal(map[string]any{
 		"jsonrpc": "2.0",
@@ -208,4 +208,10 @@ func TestWriteOperationRequiresConfirmationBeforeRequest(t *testing.T) {
 		t.Fatal("write operation reached upstream without confirmation")
 	default:
 	}
+}
+
+func testStreamableHandler(server *mcp.Server) http.Handler {
+	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
+		Stateless: true, JSONResponse: true, PropagateRequestCancellation: true,
+	})
 }

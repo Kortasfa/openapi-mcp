@@ -11,12 +11,6 @@ func escapeParameterName(name string) string {
 	return strings.NewReplacer("[", "_", "]", "_").Replace(name)
 }
 
-// buildParameterNameMapping is retained for the upstream request builder. Parameter
-// lookup derives the escaped name directly, so no mapping is necessary.
-func buildParameterNameMapping(openapi3.Parameters) map[string]string {
-	return nil
-}
-
 func isAuthenticationHeader(parameter *openapi3.Parameter, doc *openapi3.T) bool {
 	if parameter.In != "header" || doc == nil || doc.Components == nil {
 		return false

@@ -104,7 +104,7 @@ func (r *ToolRegistrar) handler(name string, schema []byte, operation OpenAPIOpe
 				return confirmationResult(name), nil
 			}
 		}
-		request, err := buildUpstreamRequest(ctx, r.doc, r.baseURLs, operation, args, buildParameterNameMapping(operation.Parameters))
+		request, err := buildUpstreamRequest(ctx, r.doc, r.baseURLs, operation, args)
 		if err != nil {
 			return nil, err
 		}
@@ -116,7 +116,7 @@ func (r *ToolRegistrar) handler(name string, schema []byte, operation OpenAPIOpe
 		if err != nil {
 			return nil, err
 		}
-		return formatUpstreamResponse(operation, schema, nil, args, request.URL, response.Response, response.Body), nil
+		return formatUpstreamResponse(operation, request.URL, response.Response, response.Body), nil
 	}
 }
 
@@ -151,7 +151,32 @@ func isWriteMethod(method string) bool {
 	return false
 }
 
-func getParameterValue(args map[string]any, name string, _ map[string]string) (any, bool) {
+func newRawTool(name, description string, schema []byte) *mcp.Tool {
+	return &mcp.Tool{Name: name, Description: description, InputSchema: json.RawMessage(schema)}
+}
+
+func toolArguments(request *mcp.CallToolRequest) map[string]any {
+	if request == nil || len(request.Params.Arguments) == 0 {
+		return map[string]any{}
+	}
+	var args map[string]any
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil || args == nil {
+		return map[string]any{}
+	}
+	return args
+}
+
+func newToolResultError(message string) *mcp.CallToolResult {
+	result := &mcp.CallToolResult{}
+	result.SetError(errorString(message))
+	return result
+}
+
+type errorString string
+
+func (value errorString) Error() string { return string(value) }
+
+func getParameterValue(args map[string]any, name string) (any, bool) {
 	value, ok := args[escapeParameterName(name)]
 	if ok {
 		return value, true
