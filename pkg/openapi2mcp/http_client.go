@@ -4,8 +4,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-
-	"github.com/ubermorgenland/openapi-mcp/pkg/auth"
 )
 
 type upstreamResponse struct {
@@ -14,15 +12,12 @@ type upstreamResponse struct {
 }
 
 func executeUpstreamRequest(ctx context.Context, request *http.Request, authorization string) (*upstreamResponse, error) {
-	authRequest := request
+	upstreamRequest := request
 	if authorization != "" {
-		authRequest = request.Clone(ctx)
-		authRequest.Header.Set("Authorization", authorization)
+		upstreamRequest = request.Clone(ctx)
+		upstreamRequest.Header.Set("Authorization", authorization)
 	}
-	authContext := auth.CreateBearerAuthContext(authRequest)
-	requestWithAuth := request.WithContext(auth.WithAuthContext(ctx, authContext))
-	authProvider := auth.NewSecureAuthProvider()
-	response, err := auth.NewSecureHTTPClientWrapper(http.DefaultClient, authProvider).Do(requestWithAuth)
+	response, err := http.DefaultClient.Do(upstreamRequest)
 	if err != nil {
 		return nil, err
 	}
