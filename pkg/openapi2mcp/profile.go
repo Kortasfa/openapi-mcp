@@ -1,13 +1,13 @@
 package openapi2mcp
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"time"
 
@@ -103,7 +103,15 @@ func LoadCompiledProfile(path string) (*CompiledProfile, *openapi3.T, []OpenAPIO
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if !reflect.DeepEqual(profile.Tools, expected.Tools) {
+	actualTools, err := json.Marshal(profile.Tools)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	expectedTools, err := json.Marshal(expected.Tools)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if !bytes.Equal(actualTools, expectedTools) {
 		return nil, nil, nil, fmt.Errorf("compiled profile tools do not match its OpenAPI source")
 	}
 	doc, err := LoadOpenAPISpecFromBytes([]byte(profile.OpenAPISpec))
