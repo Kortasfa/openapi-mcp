@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/ubermorgenland/openapi-mcp/pkg/openapi2mcp"
+	"github.com/Kortasfa/openapi-mcp/pkg/openapi2mcp"
 )
 
 func TestMCPHandlerIsStatelessStreamableHTTP(t *testing.T) {

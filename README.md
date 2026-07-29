@@ -24,6 +24,20 @@ flowchart LR
 The server does not validate, exchange, refresh, or persist access tokens.
 Downstream authorization is performed by the target API.
 
+### Code structure
+
+The conversion package has one linear flow:
+
+1. `pkg/openapi2mcp/spec.go` loads, validates, and selects curated OpenAPI operations.
+2. `pkg/openapi2mcp/schema.go` builds MCP tool input schemas.
+3. `pkg/openapi2mcp/profile.go` writes and validates versioned compiled profiles.
+4. `pkg/openapi2mcp/register.go` registers tools using the official MCP Go SDK.
+5. `pkg/openapi2mcp/request.go` builds the upstream HTTP request.
+6. `pkg/openapi2mcp/http_client.go` forwards the client Bearer header.
+7. `pkg/openapi2mcp/response.go` creates an MCP tool result from the HTTP response.
+
+The CLI in `cmd/openapi-mcp` owns the stateless Streamable HTTP endpoint and profile hot reload.
+
 ## Curated tools
 
 The iSpring specification is intentionally curated to keep MCP tool discovery
@@ -94,28 +108,6 @@ remains active. The MCP client connects to `http://host:8080/mcp` and supplies
 its own `Authorization: Bearer <access-token>` header. `GET /health` reports
 the active profile checksum and tool count.
 
-## Run an MCP server
-
-Start a stateless Streamable HTTP endpoint at `/mcp`:
-
-```sh
-bin/openapi-mcp --http=:8080 specs/weather.json
-```
-
-Connect an MCP client to `http://localhost:8080/mcp`. The client must send an
-`Accept` header that includes both `application/json` and `text/event-stream`,
-as required by the Streamable HTTP transport.
-
-For a protected upstream API, configure the MCP client to send its credential:
-
-```text
-MCP URL: http://localhost:8080/mcp
-HTTP header: Authorization: Bearer <downstream-access-token>
-```
-
-Never place client secrets in the repository, command history, or MCP tool
-arguments.
-
 ## iSpring Learn
 
 The bundled [`specs/rest-api.yaml`](specs/rest-api.yaml) produces 32 MCP tools
@@ -160,45 +152,10 @@ curl --fail-with-body http://localhost:8080/mcp \
   --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
-## CLI
-
-```text
-openapi-mcp [flags] <openapi-spec-path>
-openapi-mcp [flags] validate <openapi-spec-path>
-openapi-mcp [flags] lint <openapi-spec-path>
-openapi-mcp [flags] filter <openapi-spec-path>
-```
-
-| Flag                   | Environment variable | Purpose                                     |
-| ---------------------- | -------------------- | ------------------------------------------- |
-| `--http=:8080`         | —                    | Serve stateless Streamable HTTP at `/mcp`.  |
-| `--base-url`           | `OPENAPI_BASE_URL`   | Override the OpenAPI server URL.            |
-| `--api-key`            | `API_KEY`            | Set the downstream API key.                 |
-| `--basic-auth`         | `BASIC_AUTH`         | Set downstream Basic credentials.           |
-| `--tag`                | `OPENAPI_TAG`        | Include operations with a tag (repeatable). |
-| `--include-desc-regex` | `INCLUDE_DESC_REGEX` | Include operations matching a description.  |
-| `--exclude-desc-regex` | `EXCLUDE_DESC_REGEX` | Exclude operations matching a description.  |
-| `--dry-run`            | —                    | Print generated tool schemas and exit.      |
-| `--summary`            | —                    | Print the generated-tool summary.           |
-| `--doc=tools.md`       | —                    | Generate tool documentation and exit.       |
-
-Examples:
-
-```sh
-# Check an OpenAPI document and generated tools.
-bin/openapi-mcp validate specs/rest-api.yaml
-
-# Inspect the generated tool count without starting a server.
-bin/openapi-mcp --summary --dry-run specs/rest-api.yaml
-
-# Restrict the tools exposed by a server.
-bin/openapi-mcp --http=:8080 --tag=Users specs/rest-api.yaml
-```
-
 ## Safety
 
 - Treat all downstream credentials as secrets.
 - Configure each MCP client to send its own access token over HTTPS.
 - Put the MCP endpoint behind TLS and your product's authentication proxy.
-- Review exposed operations with `--dry-run` or `--summary` before deployment.
+- Review `x-mcp-enabled` annotations before compiling a production profile.
 - This is transparent token forwarding, not product-level RBAC or tool filtering.

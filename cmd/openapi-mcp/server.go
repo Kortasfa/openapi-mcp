@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/ubermorgenland/openapi-mcp/pkg/openapi2mcp"
+	"github.com/Kortasfa/openapi-mcp/pkg/openapi2mcp"
 )
 
 func createServerWithOptions(name, version string, doc *openapi3.T, operations []openapi2mcp.OpenAPIOperation, _ string, _ bool) *mcp.Server {
