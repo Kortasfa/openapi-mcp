@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"os"
 
 	"github.com/ubermorgenland/openapi-mcp/pkg/auth"
 )
@@ -23,10 +22,6 @@ func executeUpstreamRequest(ctx context.Context, request *http.Request, authoriz
 	authContext := auth.CreateBearerAuthContext(authRequest)
 	requestWithAuth := request.WithContext(auth.WithAuthContext(ctx, authContext))
 	authProvider := auth.NewSecureAuthProvider()
-	if os.Getenv("MCP_LOG_HTTP") != "" || os.Getenv("DEBUG") != "" {
-		logAuthenticatedHTTPRequest(requestWithAuth, authProvider)
-	}
-
 	response, err := auth.NewSecureHTTPClientWrapper(http.DefaultClient, authProvider).Do(requestWithAuth)
 	if err != nil {
 		return nil, err
@@ -35,9 +30,6 @@ func executeUpstreamRequest(ctx context.Context, request *http.Request, authoriz
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, err
-	}
-	if os.Getenv("MCP_LOG_HTTP") != "" || os.Getenv("DEBUG") != "" {
-		logHTTPResponse(response, body)
 	}
 	return &upstreamResponse{Response: response, Body: body}, nil
 }
