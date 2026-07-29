@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
 )
@@ -30,13 +29,13 @@ func (mesl *MemoryEfficientSpecLoader) LoadSpecStreaming(ctx context.Context, re
 	// Use buffered reading to control memory usage
 	buffer := mesl.processor.GetBuffer()
 	defer mesl.processor.PutBuffer(buffer)
-	
+
 	// Read spec content in chunks
 	chunk := mesl.processor.GetByteSlice()
 	defer mesl.processor.PutByteSlice(chunk)
-	
+
 	var totalSize int64
-	
+
 	for {
 		// Check context cancellation
 		select {
@@ -44,25 +43,25 @@ func (mesl *MemoryEfficientSpecLoader) LoadSpecStreaming(ctx context.Context, re
 			return nil, ctx.Err()
 		default:
 		}
-		
+
 		// Check memory usage
 		if !mesl.processor.CheckMemory() {
 			return nil, fmt.Errorf("memory usage exceeded limits while loading spec")
 		}
-		
+
 		n, err := reader.Read(chunk[:cap(chunk)])
 		if n > 0 {
 			totalSize += int64(n)
-			
+
 			// Check spec size limit
 			if totalSize > mesl.maxSpecSizeMB*1024*1024 {
-				return nil, fmt.Errorf("spec size (%dMB) exceeds maximum allowed size (%dMB)", 
+				return nil, fmt.Errorf("spec size (%dMB) exceeds maximum allowed size (%dMB)",
 					totalSize/(1024*1024), mesl.maxSpecSizeMB)
 			}
-			
+
 			buffer.Write(chunk[:n])
 		}
-		
+
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -70,21 +69,21 @@ func (mesl *MemoryEfficientSpecLoader) LoadSpecStreaming(ctx context.Context, re
 			return nil, fmt.Errorf("error reading spec: %w", err)
 		}
 	}
-	
+
 	log.Printf("Loaded spec content: %dMB", totalSize/(1024*1024))
-	
+
 	// Parse the spec
 	loader := openapi3.NewLoader()
 	doc, err := loader.LoadFromData(buffer.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("error parsing OpenAPI spec: %w", err)
 	}
-	
+
 	// Validate the spec
 	if err := doc.Validate(ctx); err != nil {
 		return nil, fmt.Errorf("spec validation failed: %w", err)
 	}
-	
+
 	return doc, nil
 }
 
@@ -93,7 +92,7 @@ func (mesl *MemoryEfficientSpecLoader) OptimizeSpec(spec *openapi3.T) error {
 	if spec == nil {
 		return fmt.Errorf("spec cannot be nil")
 	}
-	
+
 	// Remove examples from schema to save memory
 	if spec.Components != nil && spec.Components.Schemas != nil {
 		for _, schemaRef := range spec.Components.Schemas {
@@ -102,16 +101,16 @@ func (mesl *MemoryEfficientSpecLoader) OptimizeSpec(spec *openapi3.T) error {
 			}
 		}
 	}
-	
+
 	// Optimize paths
 	if spec.Paths != nil {
-		for _, pathItem := range spec.Paths {
+		for _, pathItem := range spec.Paths.Map() {
 			if pathItem != nil {
 				mesl.optimizePathItem(pathItem)
 			}
 		}
 	}
-	
+
 	log.Printf("Optimized spec for %s v%s", spec.Info.Title, spec.Info.Version)
 	return nil
 }
@@ -121,10 +120,10 @@ func (mesl *MemoryEfficientSpecLoader) optimizeSchema(schema *openapi3.Schema) {
 	if schema == nil {
 		return
 	}
-	
+
 	// Remove examples to save memory
 	schema.Example = nil
-	
+
 	// Recursively optimize nested schemas
 	if schema.Properties != nil {
 		for _, propRef := range schema.Properties {
@@ -133,12 +132,12 @@ func (mesl *MemoryEfficientSpecLoader) optimizeSchema(schema *openapi3.Schema) {
 			}
 		}
 	}
-	
+
 	if schema.Items != nil && schema.Items.Value != nil {
 		mesl.optimizeSchema(schema.Items.Value)
 	}
-	
-	if schema.AdditionalProperties != nil && schema.AdditionalProperties.Schema != nil && schema.AdditionalProperties.Schema.Value != nil {
+
+	if schema.AdditionalProperties.Schema != nil && schema.AdditionalProperties.Schema.Value != nil {
 		mesl.optimizeSchema(schema.AdditionalProperties.Schema.Value)
 	}
 }
@@ -148,12 +147,12 @@ func (mesl *MemoryEfficientSpecLoader) optimizePathItem(pathItem *openapi3.PathI
 	if pathItem == nil {
 		return
 	}
-	
+
 	operations := []*openapi3.Operation{
 		pathItem.Get, pathItem.Post, pathItem.Put, pathItem.Delete,
 		pathItem.Options, pathItem.Head, pathItem.Patch, pathItem.Trace,
 	}
-	
+
 	for _, op := range operations {
 		if op != nil {
 			mesl.optimizeOperation(op)
@@ -166,7 +165,7 @@ func (mesl *MemoryEfficientSpecLoader) optimizeOperation(op *openapi3.Operation)
 	if op == nil {
 		return
 	}
-	
+
 	// Keep description but remove lengthy examples
 	if op.RequestBody != nil && op.RequestBody.Value != nil {
 		for _, contentType := range op.RequestBody.Value.Content {
@@ -175,9 +174,9 @@ func (mesl *MemoryEfficientSpecLoader) optimizeOperation(op *openapi3.Operation)
 			}
 		}
 	}
-	
+
 	if op.Responses != nil {
-		for _, responseRef := range op.Responses {
+		for _, responseRef := range op.Responses.Map() {
 			if responseRef.Value != nil && responseRef.Value.Content != nil {
 				for _, contentType := range responseRef.Value.Content {
 					if contentType.Examples != nil {
@@ -203,17 +202,17 @@ func (mesl *MemoryEfficientSpecLoader) CreateSpecSummary(spec *openapi3.T, origi
 	summary := &SpecSummary{
 		SizeBytes: originalSize,
 	}
-	
+
 	if spec.Info != nil {
 		summary.Title = spec.Info.Title
 		summary.Version = spec.Info.Version
 	}
-	
+
 	if spec.Paths != nil {
-		summary.PathCount = len(spec.Paths)
-		
+		summary.PathCount = len(spec.Paths.Map())
+
 		// Count methods across all paths
-		for _, pathItem := range spec.Paths {
+		for _, pathItem := range spec.Paths.Map() {
 			if pathItem != nil {
 				if pathItem.Get != nil {
 					summary.MethodCount++
@@ -242,7 +241,7 @@ func (mesl *MemoryEfficientSpecLoader) CreateSpecSummary(spec *openapi3.T, origi
 			}
 		}
 	}
-	
+
 	return summary
 }
 
@@ -256,13 +255,13 @@ func EstimateSpecMemoryUsage(spec *openapi3.T) int64 {
 	if spec == nil {
 		return 0
 	}
-	
+
 	// Convert to JSON to estimate serialized size
 	data, err := json.Marshal(spec)
 	if err != nil {
 		return 0
 	}
-	
+
 	// Estimate memory usage as roughly 3x the JSON size
 	// (due to Go's internal representation and additional metadata)
 	return int64(len(data)) * 3
@@ -273,10 +272,8 @@ func CompressSpecForStorage(spec *openapi3.T) ([]byte, error) {
 	if spec == nil {
 		return nil, fmt.Errorf("spec cannot be nil")
 	}
-	
+
 	// First optimize the spec
-	optimizedSpec := *spec // Shallow copy
-	
 	// Create a minimal version for storage
 	minimalSpec := &openapi3.T{
 		OpenAPI: spec.OpenAPI,
@@ -287,12 +284,12 @@ func CompressSpecForStorage(spec *openapi3.T) ([]byte, error) {
 			SecuritySchemes: spec.Components.SecuritySchemes,
 		},
 	}
-	
+
 	// Marshal to JSON
 	data, err := json.Marshal(minimalSpec)
 	if err != nil {
 		return nil, fmt.Errorf("error marshaling spec: %w", err)
 	}
-	
+
 	return data, nil
 }

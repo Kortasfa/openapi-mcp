@@ -185,7 +185,7 @@ openapi-mcp --http=:8080 lint</code></pre>
                 <td>
                   Mount an OpenAPI spec at a base path (repeatable, can be used multiple times).<br>
                   Example: <code>--mount /petstore:petstore.yaml --mount /books:books.yaml</code><br>
-                  By default, this will serve the Petstore API at <code>/petstore</code> (StreamableHTTP), and the Books API at <code>/books</code>. If you use <code>--http-transport=sse</code>, endpoints like <code>/petstore/sse</code> and <code>/petstore/message</code> will be available for SSE clients.
+                  By default, this will serve the Petstore API at <code>/petstore</code> (stateless Streamable HTTP), and the Books API at <code>/books</code>. SSE endpoints and session management are not exposed.
                 </td>
               </tr>
               <tr>

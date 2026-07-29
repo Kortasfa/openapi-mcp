@@ -36,7 +36,7 @@ func isAuthenticationHeader(param *openapi3.Parameter, doc *openapi3.T) bool {
 	if param.In != "header" {
 		return false
 	}
-	
+
 	// Check if this header matches any authentication scheme in the spec
 	if doc != nil && doc.Components != nil && doc.Components.SecuritySchemes != nil {
 		for _, schemeRef := range doc.Components.SecuritySchemes {
@@ -56,13 +56,13 @@ func isAuthenticationHeader(param *openapi3.Parameter, doc *openapi3.T) bool {
 			}
 		}
 	}
-	
+
 	// Check for common host headers that are automatically injected
 	paramName := strings.ToLower(param.Name)
 	if strings.Contains(paramName, "host") {
 		return true
 	}
-	
+
 	// Common authentication headers
 	commonAuthHeaders := []string{
 		"authorization",
@@ -71,13 +71,13 @@ func isAuthenticationHeader(param *openapi3.Parameter, doc *openapi3.T) bool {
 		"x-rapidapi-key",
 		"x-rapidapi-host",
 	}
-	
+
 	for _, authHeader := range commonAuthHeaders {
 		if paramName == authHeader {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -179,12 +179,6 @@ func resolveSchemaRef(schemaRef *openapi3.SchemaRef, doc *openapi3.T) *openapi3.
 	return schemaRef.Value
 }
 
-// mergeOneOfSchemas creates a unified schema that accepts any of the oneOf variants
-// This provides better MCP compatibility by creating a single schema with all possible properties
-func mergeOneOfSchemas(oneOf []*openapi3.SchemaRef, doc *openapi3.T) map[string]any {
-	return mergeOneOfSchemasWithVisited(oneOf, doc, make(map[*openapi3.Schema]bool))
-}
-
 func mergeOneOfSchemasWithVisited(oneOf []*openapi3.SchemaRef, doc *openapi3.T, visited map[*openapi3.Schema]bool) map[string]any {
 	merged := map[string]any{
 		"type": "object",
@@ -241,15 +235,6 @@ func mergeOneOfSchemasWithVisited(oneOf []*openapi3.SchemaRef, doc *openapi3.T, 
 	return merged
 }
 
-// unescapeParameterName converts escaped parameter names back to their original form.
-// This maintains a mapping from escaped names to original names for parameter lookup.
-func unescapeParameterName(escaped string, originalNames map[string]string) string {
-	if original, exists := originalNames[escaped]; exists {
-		return original
-	}
-	return escaped // Return as-is if not found in mapping
-}
-
 // buildParameterNameMapping creates a mapping from escaped parameter names to original names.
 // This is used to reverse the escaping when looking up parameter values.
 func buildParameterNameMapping(params openapi3.Parameters) map[string]string {
@@ -267,12 +252,6 @@ func buildParameterNameMapping(params openapi3.Parameters) map[string]string {
 	return mapping
 }
 
-// extractProperty recursively extracts a property schema from an OpenAPI SchemaRef.
-// Handles allOf, oneOf, anyOf, discriminator, default, example, and basic OpenAPI 3.1 features.
-func extractProperty(s *openapi3.SchemaRef) map[string]any {
-	return extractPropertyWithContext(s, nil)
-}
-
 // extractPropertyWithContext recursively extracts a property schema from an OpenAPI SchemaRef with document context.
 // Handles allOf, oneOf, anyOf, discriminator, default, example, and basic OpenAPI 3.1 features.
 func extractPropertyWithContext(s *openapi3.SchemaRef, doc *openapi3.T) map[string]any {
@@ -285,7 +264,7 @@ func extractPropertyWithContextAndVisited(s *openapi3.SchemaRef, doc *openapi3.T
 	}
 
 	val := s.Value
-	
+
 	// Check for circular references
 	if visited[val] {
 		// Return a reference or basic type to break the cycle
@@ -294,11 +273,11 @@ func extractPropertyWithContextAndVisited(s *openapi3.SchemaRef, doc *openapi3.T
 		}
 		return map[string]any{"type": "object"}
 	}
-	
+
 	// Mark this schema as being processed
 	visited[val] = true
 	defer func() { delete(visited, val) }()
-	
+
 	prop := map[string]any{}
 	// Handle allOf (merge all subschemas)
 	if len(val.AllOf) > 0 {
@@ -447,14 +426,14 @@ func BuildInputSchemaWithContext(params openapi3.Parameters, requestBody *openap
 			}
 			supportedTypes := []string{
 				"application/json",
-				"application/vnd.api+json", 
+				"application/vnd.api+json",
 				"application/xml",
 				"text/xml",
 				"text/plain",
 				"multipart/form-data",
 				"application/x-www-form-urlencoded",
 			}
-			
+
 			isSupported := false
 			for _, supportedType := range supportedTypes {
 				if baseMT == supportedType {
@@ -462,7 +441,7 @@ func BuildInputSchemaWithContext(params openapi3.Parameters, requestBody *openap
 					break
 				}
 			}
-			
+
 			if !isSupported {
 				fmt.Fprintf(os.Stderr, "[WARN] Request body uses media type '%s'. Supported types: %v\n", mtName, supportedTypes)
 			}
@@ -470,7 +449,7 @@ func BuildInputSchemaWithContext(params openapi3.Parameters, requestBody *openap
 		// Try to find a suitable content type in order of preference
 		var mt *openapi3.MediaType
 		var bodyDescription string
-		
+
 		preferredTypes := []struct {
 			contentType string
 			description string
@@ -483,14 +462,14 @@ func BuildInputSchemaWithContext(params openapi3.Parameters, requestBody *openap
 			{"multipart/form-data", "The form data request body (provide as object with fields)."},
 			{"application/x-www-form-urlencoded", "The URL-encoded form request body (provide as object)."},
 		}
-		
+
 		for _, pref := range preferredTypes {
 			if mt = getContentByType(requestBody.Value.Content, pref.contentType); mt != nil {
 				bodyDescription = pref.description
 				break
 			}
 		}
-		
+
 		if mt != nil && mt.Schema != nil && mt.Schema.Value != nil {
 			bodyProp := extractPropertyWithContext(mt.Schema, doc)
 			bodyProp["description"] = bodyDescription

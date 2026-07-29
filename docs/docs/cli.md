@@ -31,7 +31,7 @@ openapi-mcp --http=:8080 api.yaml
 ```sh
 openapi-mcp --http=:8080 --mount /petstore:petstore.yaml --mount /books:books.yaml
 ```
-By default, this will serve the Petstore API at `/petstore` (StreamableHTTP), and the Books API at `/books`. If you use `--http-transport=sse`, endpoints like `/petstore/sse` and `/petstore/message` will be available for SSE clients.
+By default, this will serve the Petstore API at `/petstore` (stateless Streamable HTTP), and the Books API at `/books`. SSE endpoints and session management are not exposed.
 
 ### Validate an OpenAPI Spec
 ```sh
@@ -52,4 +52,4 @@ openapi-mcp filter --function-list-file=funcs.txt api.yaml
 ```
 You can use `--function-list-file=funcs.txt` to restrict the output to only the operations whose `operationId` is listed (one per line) in the given file. This filter is applied after tag and description filters.
 
-This will output a JSON array of operations matching the filters, including their name, description, tags, and input schema. 
+This will output a JSON array of operations matching the filters, including their name, description, tags, and input schema.

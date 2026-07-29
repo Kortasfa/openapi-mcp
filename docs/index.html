@@ -239,10 +239,10 @@ bin/openapi-mcp filter --tag=admin --include-desc-regex=foo examples/fastly-open
 go get github.com/jedisct1/openapi-mcp/pkg/openapi2mcp
 
 # MCP server package for server functionality
-go get github.com/jedisct1/openapi-mcp/pkg/mcp/server
+go get github.com/modelcontextprotocol/go-sdk/mcp
 
 # MCP types package for core MCP utilities
-go get github.com/jedisct1/openapi-mcp/pkg/mcp/mcp</code></pre>
+go get github.com/modelcontextprotocol/go-sdk/mcp</code></pre>
         </div>
         
         <div class="card mb-4">
@@ -275,8 +275,7 @@ func main() {
           <h4>Advanced Usage with MCP Package</h4>
           <pre><code class="language-go">import (
 	"context"
-	"github.com/jedisct1/openapi-mcp/pkg/mcp/mcp"
-	"github.com/jedisct1/openapi-mcp/pkg/mcp/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/jedisct1/openapi-mcp/pkg/openapi2mcp"
 )
 
@@ -299,7 +298,7 @@ srv.AddTool(customTool, handlerFunc)</code></pre>
         <ul class="mt-2">
           <li><a href="./docs/library-usage.html">Library Usage Guide</a></li>
           <li><a href="https://pkg.go.dev/github.com/jedisct1/openapi-mcp/pkg/openapi2mcp" target="_blank">openapi2mcp GoDoc</a></li>
-          <li><a href="https://pkg.go.dev/github.com/jedisct1/openapi-mcp/pkg/mcp/server" target="_blank">mcp/server GoDoc</a></li>
+          <li><a href="https://pkg.go.dev/github.com/modelcontextprotocol/go-sdk/mcp" target="_blank">official MCP Go SDK</a></li>
         </ul>
       </div>
     </section>

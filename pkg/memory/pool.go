@@ -16,7 +16,8 @@ func NewBytePool(initialSize int) *BytePool {
 	return &BytePool{
 		pool: sync.Pool{
 			New: func() interface{} {
-				return make([]byte, 0, initialSize)
+				buffer := make([]byte, 0, initialSize)
+				return &buffer
 			},
 		},
 	}
@@ -24,14 +25,14 @@ func NewBytePool(initialSize int) *BytePool {
 
 // Get retrieves a byte slice from the pool
 func (bp *BytePool) Get() []byte {
-	return bp.pool.Get().([]byte)[:0] // Reset length but keep capacity
+	return (*bp.pool.Get().(*[]byte))[:0] // Reset length but keep capacity
 }
 
 // Put returns a byte slice to the pool for reuse
 func (bp *BytePool) Put(b []byte) {
 	// Only return large enough slices to avoid memory fragmentation
 	if cap(b) >= 1024 {
-		bp.pool.Put(b)
+		bp.pool.Put(&b)
 	}
 }
 
@@ -86,31 +87,31 @@ func NewMemoryLimiter(maxMemoryMB int64) *MemoryLimiter {
 func (ml *MemoryLimiter) CheckMemoryUsage() bool {
 	ml.mu.Lock()
 	defer ml.mu.Unlock()
-	
+
 	ml.operationCount++
-	
+
 	// Only check memory every N operations to avoid overhead
 	if ml.operationCount%int64(ml.checkInterval) != 0 {
 		return true
 	}
-	
+
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	
+
 	currentMemoryMB := int64(m.Alloc) / (1024 * 1024)
-	
+
 	if currentMemoryMB > ml.maxMemoryMB {
 		// Force garbage collection
 		runtime.GC()
-		
+
 		// Check again after GC
 		runtime.ReadMemStats(&m)
 		currentMemoryMB = int64(m.Alloc) / (1024 * 1024)
-		
+
 		// Return false if still over limit after GC
 		return currentMemoryMB <= ml.maxMemoryMB
 	}
-	
+
 	return true
 }
 
@@ -118,16 +119,16 @@ func (ml *MemoryLimiter) CheckMemoryUsage() bool {
 func (ml *MemoryLimiter) GetMemoryStats() (allocMB, sysMB int64) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	
+
 	return int64(m.Alloc) / (1024 * 1024), int64(m.Sys) / (1024 * 1024)
 }
 
 // StreamProcessor handles streaming processing of large data to minimize memory usage
 type StreamProcessor struct {
-	bufferPool   *BufferPool
-	bytePool     *BytePool
-	memLimiter   *MemoryLimiter
-	chunkSize    int
+	bufferPool *BufferPool
+	bytePool   *BytePool
+	memLimiter *MemoryLimiter
+	chunkSize  int
 }
 
 // NewStreamProcessor creates a new stream processor for memory-efficient processing
@@ -135,7 +136,7 @@ func NewStreamProcessor(maxMemoryMB int64, chunkSize int) *StreamProcessor {
 	if chunkSize <= 0 {
 		chunkSize = 8192 // 8KB default
 	}
-	
+
 	return &StreamProcessor{
 		bufferPool: NewBufferPool(),
 		bytePool:   NewBytePool(chunkSize),

@@ -19,29 +19,28 @@ import (
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/ubermorgenland/openapi-mcp/pkg/auth"
 	"github.com/ubermorgenland/openapi-mcp/pkg/database"
-	"github.com/ubermorgenland/openapi-mcp/pkg/mcp/mcp"
-	mcpserver "github.com/ubermorgenland/openapi-mcp/pkg/mcp/server"
 	"github.com/ubermorgenland/openapi-mcp/pkg/models"
 	"github.com/xeipuuv/gojsonschema"
 )
 
 // ToolRegistrar encapsulates the logic for registering OpenAPI operations as MCP tools
 type ToolRegistrar struct {
-	server       *mcpserver.MCPServer
-	doc          *openapi3.T
-	opts         *ToolGenOptions
-	dbSpec       *models.OpenAPISpec
-	baseURLs     []string
-	apiKeyHeader string
-	toolSchemas  map[string][]byte
-	toolNames    []string
+	server        *mcp.Server
+	doc           *openapi3.T
+	opts          *ToolGenOptions
+	dbSpec        *models.OpenAPISpec
+	baseURLs      []string
+	apiKeyHeader  string
+	toolSchemas   map[string][]byte
+	toolNames     []string
 	toolSummaries []map[string]any
 }
 
 // NewToolRegistrar creates a new tool registrar instance
-func NewToolRegistrar(server *mcpserver.MCPServer, doc *openapi3.T, opts *ToolGenOptions, dbSpec *models.OpenAPISpec) *ToolRegistrar {
+func NewToolRegistrar(server *mcp.Server, doc *openapi3.T, opts *ToolGenOptions, dbSpec *models.OpenAPISpec) *ToolRegistrar {
 	return &ToolRegistrar{
 		server:        server,
 		doc:           doc,
@@ -59,7 +58,7 @@ func (tr *ToolRegistrar) setupConfiguration() {
 	tr.baseURLs = []string{}
 	if os.Getenv("OPENAPI_BASE_URL") != "" {
 		tr.baseURLs = append(tr.baseURLs, os.Getenv("OPENAPI_BASE_URL"))
-	} else if tr.doc.Servers != nil && len(tr.doc.Servers) > 0 {
+	} else if len(tr.doc.Servers) > 0 {
 		for _, s := range tr.doc.Servers {
 			if s != nil && s.URL != "" {
 				tr.baseURLs = append(tr.baseURLs, s.URL)
@@ -106,8 +105,6 @@ func (tr *ToolRegistrar) processOperations(ops []OpenAPIOperation) []string {
 	}
 
 	processedCount := 0
-	const batchSize = 1 // Process one operation at a time to prevent memory issues
-
 	// Process each operation
 	for i, op := range ops {
 		if !tr.filterByTag(op) {
@@ -122,7 +119,7 @@ func (tr *ToolRegistrar) processOperations(ops []OpenAPIOperation) []string {
 		}
 
 		log.Printf("🔄 Processing operation %d/%d: %s", processedCount+1, actualOpsCount, op.OperationID)
-		
+
 		// Process individual operation (this will need to be implemented)
 		if err := tr.processOperation(op, i); err != nil {
 			log.Printf("⚠️ Failed to process operation %s: %v", op.OperationID, err)
@@ -182,7 +179,7 @@ MAIN FUNCTION COMPARISON:
 
 NEXT STEPS TO COMPLETE REFACTORING:
 1. Extract schema building logic (~400 lines) → buildSchema() method
-2. Extract HTTP handler creation (~300 lines) → createHandler() method  
+2. Extract HTTP handler creation (~300 lines) → createHandler() method
 3. Extract tool registration logic (~200 lines) → registerTool() method
 4. Extract request building logic (~200 lines) → buildRequest() method
 5. Move utility functions to appropriate helper methods
@@ -1037,12 +1034,12 @@ func hasDateTimeInSchemaWithVisited(schema *openapi3.Schema, visited map[*openap
 	if schema == nil {
 		return false
 	}
-	
+
 	// Check for circular references
 	if visited[schema] {
 		return false
 	}
-	
+
 	// Mark this schema as being processed
 	visited[schema] = true
 	defer func() { delete(visited, schema) }()
@@ -1097,17 +1094,21 @@ func hasDateTimeInSchemaWithVisited(schema *openapi3.Schema, visited map[*openap
 // Also adds tools for externalDocs, info, and describe if present in the OpenAPI spec.
 // RegisterOpenAPIToolsRefactored demonstrates the improved, refactored approach using ToolRegistrar
 // This would replace the 1890-line function below once fully implemented
-func RegisterOpenAPIToolsRefactored(server *mcpserver.MCPServer, ops []OpenAPIOperation, doc *openapi3.T, opts *ToolGenOptions, dbSpec *models.OpenAPISpec) []string {
+func RegisterOpenAPIToolsRefactored(server *mcp.Server, ops []OpenAPIOperation, doc *openapi3.T, opts *ToolGenOptions, dbSpecs ...*models.OpenAPISpec) []string {
+	var dbSpec *models.OpenAPISpec
+	if len(dbSpecs) > 0 {
+		dbSpec = dbSpecs[0]
+	}
 	// Create and configure the registrar (replaces 100+ lines of setup code)
 	registrar := NewToolRegistrar(server, doc, opts, dbSpec)
 	registrar.setupConfiguration()
-	
+
 	// Process all operations (encapsulates the complex logic in manageable methods)
 	toolNames := registrar.processOperations(ops)
-	
+
 	// Add summary and cleanup that was at the end of the original function
 	log.Printf("✅ Successfully registered %d tools", len(toolNames))
-	
+
 	return toolNames
 }
 
@@ -1116,11 +1117,15 @@ func RegisterOpenAPIToolsRefactored(server *mcpserver.MCPServer, ops []OpenAPIOp
 // RegisterOpenAPITools creates MCP tools for each provided OpenAPI operation.
 // The handler validates arguments, builds the HTTP request, and returns the HTTP response as the tool result.
 // Returns the list of tool names registered.
-func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, doc *openapi3.T, opts *ToolGenOptions, dbSpec *models.OpenAPISpec) []string {
+func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *openapi3.T, opts *ToolGenOptions, dbSpecs ...*models.OpenAPISpec) []string {
+	var dbSpec *models.OpenAPISpec
+	if len(dbSpecs) > 0 {
+		dbSpec = dbSpecs[0]
+	}
 	baseURLs := []string{}
 	if os.Getenv("OPENAPI_BASE_URL") != "" {
 		baseURLs = append(baseURLs, os.Getenv("OPENAPI_BASE_URL"))
-	} else if doc.Servers != nil && len(doc.Servers) > 0 {
+	} else if len(doc.Servers) > 0 {
 		for _, s := range doc.Servers {
 			if s != nil && s.URL != "" {
 				baseURLs = append(baseURLs, s.URL)
@@ -1160,10 +1165,10 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 		return false
 	}
 
-	const batchSize = 1 // Process one operation at a time to prevent memory issues
 	processedCount := 0
 	totalOps := len(ops)
-	
+	const batchSize = 1
+
 	// Count operations that will actually be processed
 	actualOpsCount := 0
 	for _, op := range ops {
@@ -1171,36 +1176,36 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			actualOpsCount++
 		}
 	}
-	
+
 	fmt.Fprintf(os.Stderr, "[INFO] Will process %d/%d operations in batches of %d\n", actualOpsCount, totalOps, batchSize)
-	
+
 	for i, op := range ops {
 		if !filterByTag(op) {
 			continue
 		}
-		
+
 		// PRE-OPERATION memory check to prevent processing when already at limit
 		var preM runtime.MemStats
 		runtime.ReadMemStats(&preM)
-		if preM.Sys > uint64(5000 * 1024 * 1024) { // 5GB pre-check limit
+		if preM.Sys > uint64(5000*1024*1024) { // 5GB pre-check limit
 			fmt.Fprintf(os.Stderr, "[ERROR] Pre-operation memory too high: %.1fMB sys, aborting before operation %d\n", float64(preM.Sys)/1024/1024, processedCount+1)
 			fmt.Fprintf(os.Stderr, "[INFO] Successfully processed %d/%d operations before hitting pre-operation memory limit\n", processedCount, actualOpsCount)
 			break
 		}
-		
+
 		processedCount++
 		fmt.Fprintf(os.Stderr, "[INFO] Processing operation %d/%d: %s (index %d)\n", processedCount, actualOpsCount, op.OperationID, i+1)
-		
+
 		// Emergency memory management - force multiple GC cycles after every operation
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
-		
+
 		// Ultra-aggressive memory management with lower thresholds to prevent OOM kills
 		memThresholdCritical := uint64(5500 * 1024 * 1024) // 5.5GB critical threshold (reduced)
-		memThresholdHigh := uint64(4500 * 1024 * 1024)     // 4.5GB high threshold (reduced) 
+		memThresholdHigh := uint64(4500 * 1024 * 1024)     // 4.5GB high threshold (reduced)
 		memThresholdMedium := uint64(3500 * 1024 * 1024)   // 3.5GB medium threshold (reduced)
 		memThresholdLow := uint64(2500 * 1024 * 1024)      // 2.5GB low threshold (new)
-		
+
 		if m.Sys > memThresholdCritical {
 			fmt.Fprintf(os.Stderr, "[ERROR] Critical memory usage: %.1fMB sys, aborting to prevent OOM\n", float64(m.Sys)/1024/1024)
 			fmt.Fprintf(os.Stderr, "[INFO] Successfully processed %d/%d operations before hitting memory limit\n", processedCount, actualOpsCount)
@@ -1208,22 +1213,22 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 		} else if m.Sys > memThresholdHigh {
 			// Aggressive cleanup for high memory usage
 			fmt.Fprintf(os.Stderr, "[WARN] High memory usage detected: %.1fMB sys, performing aggressive cleanup\n", float64(m.Sys)/1024/1024)
-			
+
 			// Force memory return to OS
 			for i := 0; i < 15; i++ {
 				runtime.GC()
 			}
-			
+
 			// Additional cleanup strategies
 			debug.FreeOSMemory()
 			runtime.ReadMemStats(&m)
 			fmt.Fprintf(os.Stderr, "[INFO] After aggressive cleanup: %.1fMB sys\n", float64(m.Sys)/1024/1024)
-			
+
 		} else if m.Sys > memThresholdMedium {
 			// Moderate cleanup for medium memory usage
 			fmt.Fprintf(os.Stderr, "[WARN] Medium memory usage: %.1fMB sys, performing moderate cleanup\n", float64(m.Sys)/1024/1024)
 			runtime.GC()
-			runtime.GC() 
+			runtime.GC()
 			debug.FreeOSMemory()
 		} else if m.Sys > memThresholdLow {
 			// Early cleanup to prevent spikes
@@ -1236,16 +1241,16 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 				runtime.GC()
 			}
 		}
-		
+
 		// Memory monitoring and database health check every 10 operations
 		if processedCount%10 == 0 {
 			runtime.ReadMemStats(&m)
-			fmt.Fprintf(os.Stderr, "[INFO] ✅ Progress %d/%d (%.1f%%), Memory: %.1fMB heap, %.1fMB sys\n", 
+			fmt.Fprintf(os.Stderr, "[INFO] ✅ Progress %d/%d (%.1f%%), Memory: %.1fMB heap, %.1fMB sys\n",
 				processedCount, actualOpsCount,
 				float64(processedCount)/float64(actualOpsCount)*100,
 				float64(m.HeapAlloc)/1024/1024, float64(m.Sys)/1024/1024)
 		}
-		
+
 		// Database health check every 50 operations to prevent connection timeout
 		if processedCount%50 == 0 {
 			// Check database connection health during long-running operations
@@ -1255,7 +1260,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 				fmt.Fprintf(os.Stderr, "[INFO] ✅ Database connection healthy at operation %d/%d\n", processedCount, actualOpsCount)
 			}
 		}
-		
+
 		// Build schema with error protection and memory optimization
 		var inputSchema map[string]any
 		func() {
@@ -1266,22 +1271,22 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 						"type": "object",
 						"properties": map[string]any{
 							"body": map[string]any{
-								"type": "object",
+								"type":        "object",
 								"description": "Request body parameters",
 							},
 						},
 					}
 				}
 			}()
-			
+
 			// For very memory-constrained situations, use simplified schema building
 			if m.Sys > memThresholdMedium {
 				// Use simplified schema for operations under memory pressure
 				inputSchema = map[string]any{
-					"type": "object", 
+					"type": "object",
 					"properties": map[string]any{
 						"body": map[string]any{
-							"type": "object",
+							"type":        "object",
 							"description": fmt.Sprintf("Parameters for %s operation", op.OperationID),
 						},
 					},
@@ -1298,14 +1303,14 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 		// Generate AI-friendly description
 		desc := generateAIFriendlyDescription(op, inputSchema, apiKeyHeader)
 		name := op.OperationID
-		
+
 		// Clear large objects immediately and force GC
 		inputSchema = nil
 		runtime.GC() // Force GC after clearing schema
 		if opts != nil && opts.NameFormat != nil {
 			name = opts.NameFormat(name)
 		}
-		annotations := mcp.ToolAnnotation{}
+		annotations := &mcp.ToolAnnotations{}
 		var titleParts []string
 		if opts != nil && opts.Version != "" {
 			titleParts = append(titleParts, "OpenAPI "+opts.Version)
@@ -1316,7 +1321,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 		if len(titleParts) > 0 {
 			annotations.Title = strings.Join(titleParts, " | ")
 		}
-		tool := mcp.NewToolWithRawSchema(name, desc, inputSchemaJSON)
+		tool := newRawTool(name, desc, inputSchemaJSON)
 		tool.Annotations = annotations
 		toolSchemas[name] = inputSchemaJSON
 		opCopy := op
@@ -1333,10 +1338,10 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 		}
 		// Register the tool with the MCP server
 
-		server.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		server.AddTool(tool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			// Execute the OpenAPI operation
 
-			args := req.GetArguments()
+			args := toolArguments(req)
 			if args == nil {
 				args = map[string]any{}
 			}
@@ -1353,8 +1358,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			if err != nil {
 				return &mcp.CallToolResult{
 					Content: []mcp.Content{
-						mcp.TextContent{
-							Type: "text",
+						&mcp.TextContent{
 							Text: "Validation error: " + err.Error(),
 						},
 					},
@@ -1362,7 +1366,6 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 				}, nil
 			}
 			if !result.Valid() {
-				var missingFields []string
 				var suggestions []string
 				errMsgs := ""
 				// Parse the input schema for property descriptions
@@ -1377,7 +1380,6 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 					case "required":
 						if missingRaw, ok := verr.Details()["property"]; ok {
 							if missing, ok := missingRaw.(string); ok {
-								missingFields = append(missingFields, missing)
 								if prop, ok := properties[missing].(map[string]any); ok {
 									desc, _ := prop["description"].(string)
 									typeStr, _ := prop["type"].(string)
@@ -1455,7 +1457,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 					errorText += "\n\n" + strings.Join(suggestions, "\n")
 				}
 
-				return mcp.NewToolResultError(
+				return newToolResultError(
 					errorText,
 					inputSchema,
 					args,
@@ -1562,7 +1564,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			// Extract header parameters that might be passed as tool arguments
 			// This handles cases where authentication headers are passed as arguments
 			// rather than being defined as explicit header parameters in the OpenAPI spec
-			
+
 			// First, collect all header parameter names from the OpenAPI spec
 			specHeaderParams := make(map[string]bool)
 			for _, paramRef := range opCopy.Parameters {
@@ -1593,7 +1595,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 					}
 				}
 			}
-			
+
 			// Also collect header names from security schemes
 			if doc.Components != nil && doc.Components.SecuritySchemes != nil {
 				for _, secSchemeRef := range doc.Components.SecuritySchemes {
@@ -1608,7 +1610,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 					}
 				}
 			}
-			
+
 			// Debug: Log detected header parameters
 			if os.Getenv("MCP_LOG_HTTP") != "" || os.Getenv("DEBUG") != "" {
 				var headerNames []string
@@ -1625,12 +1627,12 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 					// Convert to string and set as header
 					headerValue := fmt.Sprintf("%v", val)
 					httpReq.Header.Set(argName, headerValue)
-					
+
 					// Debug: Log header conversion
 					if os.Getenv("MCP_LOG_HTTP") != "" || os.Getenv("DEBUG") != "" {
 						log.Printf("🔧 DEBUG - Converting argument '%s' to header: %s", argName, headerValue)
 					}
-					
+
 					// Remove from args so it doesn't get processed as a query parameter
 					delete(args, argName)
 				}
@@ -1674,7 +1676,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 				}
 				log.Printf("DEBUG: Using existing session auth context with token: %s...", tokenPreview)
 				finalAuthCtx = existingAuthCtx
-				
+
 				// Priority 1: Check if tool arguments provide authentication tokens (highest priority)
 				// Create a temporary context to extract tool tokens, but preserve session context otherwise
 				tempAuthCtx := auth.CreateAuthContextWithToolArgs(httpReq, doc, dbSpec, args)
@@ -1695,25 +1697,19 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 				} else {
 					// No token in session context, try to extract from session auth headers or original request
 					log.Printf("DEBUG: No token in session context, trying to extract from session auth headers")
-					
+
 					// First try session auth headers if available
 					var authHeader string
-					if session := mcpserver.ClientSessionFromContext(ctx); session != nil {
-						if sessionWithAuth, ok := session.(interface{ GetAuthHeaders() http.Header }); ok {
-							authHeaders := sessionWithAuth.GetAuthHeaders()
-							if authValue := authHeaders.Get("Authorization"); authValue != "" {
-								authHeader = authValue
-								log.Printf("DEBUG: Found Authorization header in session auth headers")
-							}
-						}
+					if existingAuthCtx.OriginalRequest != nil {
+						authHeader = existingAuthCtx.OriginalRequest.Header.Get("Authorization")
 					}
-					
+
 					// Fallback to original request headers if session headers are empty
 					if authHeader == "" && existingAuthCtx.OriginalRequest != nil {
 						log.Printf("DEBUG: No session auth headers, trying to extract from original request headers")
 						authHeader = existingAuthCtx.OriginalRequest.Header.Get("Authorization")
 					}
-					
+
 					if authHeader != "" {
 						headerPreview := authHeader
 						if len(headerPreview) > 30 {
@@ -1729,12 +1725,12 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 							log.Printf("DEBUG: Extracted Bearer token: %s...", tokenPreview)
 							// Create updated context with the extracted token
 							finalAuthCtx = &auth.AuthContext{
-								Token:              sessionToken,
-								AuthType:          existingAuthCtx.AuthType,
-								Endpoint:          existingAuthCtx.Endpoint,
-								SpecParamName:     existingAuthCtx.SpecParamName,
-								ApiHost:           existingAuthCtx.ApiHost,
-								HostHeaders:       existingAuthCtx.HostHeaders,
+								Token:         sessionToken,
+								AuthType:      existingAuthCtx.AuthType,
+								Endpoint:      existingAuthCtx.Endpoint,
+								SpecParamName: existingAuthCtx.SpecParamName,
+								ApiHost:       existingAuthCtx.ApiHost,
+								HostHeaders:   existingAuthCtx.HostHeaders,
 							}
 						}
 					} else {
@@ -1752,12 +1748,12 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			// Use secure HTTP client with context-based authentication
 			authProvider := auth.NewSecureAuthProvider()
 			secureClient := auth.NewSecureHTTPClientWrapper(http.DefaultClient, authProvider)
-			
+
 			// Log final request with authentication headers if logging is enabled
 			if os.Getenv("MCP_LOG_HTTP") != "" || os.Getenv("DEBUG") != "" {
 				logAuthenticatedHTTPRequest(httpReqWithAuth, authProvider)
 			}
-			
+
 			resp, err := secureClient.Do(httpReqWithAuth)
 			if err != nil {
 				return nil, err
@@ -1822,19 +1818,11 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 					errorJSON, _ := json.MarshalIndent(errorObj, "", "  ")
 					return &mcp.CallToolResult{
 						Content: []mcp.Content{
-							mcp.TextContent{
-								Type: "json",
+							&mcp.TextContent{
 								Text: string(errorJSON),
 							},
 						},
-						IsError:      true,
-						Schema:       inputSchema,
-						Arguments:    args,
-						Examples:     []any{args},
-						Usage:        "call <tool> <json-args>",
-						NextSteps:    []string{"list", "schema <tool>"},
-						OutputFormat: "structured",
-						OutputType:   "file",
+						IsError: true,
 					}, nil
 				}
 				// Create a simple text error message
@@ -1847,7 +1835,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 				}
 				errorText += fmt.Sprintf("\nOperation: %s (%s)", opCopy.OperationID, opSummary)
 
-				return mcp.NewToolResultError(
+				return newToolResultError(
 					errorText,
 					inputSchema,
 					args,
@@ -1881,18 +1869,11 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 				resultJSON, _ := json.MarshalIndent(resultObj, "", "  ")
 				return &mcp.CallToolResult{
 					Content: []mcp.Content{
-						mcp.TextContent{
-							Type: "json",
+						&mcp.TextContent{
 							Text: string(resultJSON),
 						},
 					},
-					Schema:       inputSchema,
-					Arguments:    args,
-					Examples:     []any{args},
-					Usage:        "call <tool> <json-args>",
-					NextSteps:    []string{"list", "schema <tool>"},
-					OutputFormat: "structured",
-					OutputType:   "file",
+					StructuredContent: resultObj,
 				}, nil
 			}
 
@@ -1901,20 +1882,11 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			if args["stream"] == true {
 				return &mcp.CallToolResult{
 					Content: []mcp.Content{
-						mcp.TextContent{
-							Type: "text",
+						&mcp.TextContent{
 							Text: respText,
 						},
 					},
-					Schema:       inputSchema,
-					Arguments:    args,
-					Examples:     []any{args},
-					Usage:        "call <tool> <json-args>",
-					NextSteps:    []string{"list", "schema <tool>"},
-					Partial:      true,
-					ResumeToken:  "stream-" + fmt.Sprintf("%d", rand.Intn(1000)),
-					OutputFormat: "unstructured",
-					OutputType:   "text",
+					StructuredContent: map[string]any{"partial": true, "resume_token": "stream-" + fmt.Sprintf("%d", rand.Intn(1000))},
 				}, nil
 			}
 			if args["resume_token"] != "" {
@@ -1926,20 +1898,11 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 				}
 				return &mcp.CallToolResult{
 					Content: []mcp.Content{
-						mcp.TextContent{
-							Type: "text",
+						&mcp.TextContent{
 							Text: respText,
 						},
 					},
-					Schema:       inputSchema,
-					Arguments:    args,
-					Examples:     []any{args},
-					Usage:        "call <tool> <json-args>",
-					NextSteps:    []string{"list", "schema <tool>"},
-					Partial:      true,
-					ResumeToken:  resumeToken,
-					OutputFormat: "unstructured",
-					OutputType:   "text",
+					StructuredContent: map[string]any{"partial": true, "resume_token": resumeToken},
 				}, nil
 			}
 			if (opts == nil || opts.ConfirmDangerousActions) && (method == "PUT" || method == "POST" || method == "DELETE") {
@@ -1947,41 +1910,31 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 					confirmText := fmt.Sprintf("⚠️  CONFIRMATION REQUIRED\n\nAction: %s\nThis action is irreversible. Proceed?\n\nTo confirm, retry the call with {\"__confirmed\": true} added to your arguments.", name)
 					return &mcp.CallToolResult{
 						Content: []mcp.Content{
-							mcp.TextContent{
-								Type: "text",
+							&mcp.TextContent{
 								Text: confirmText,
 							},
 						},
-						OutputFormat: "unstructured",
-						OutputType:   "text",
 					}, nil
 				}
 			}
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "text",
+					&mcp.TextContent{
 						Text: respText,
 					},
 				},
-				Schema:       inputSchema,
-				Arguments:    args,
-				Examples:     []any{args},
-				Usage:        "call <tool> <json-args>",
-				NextSteps:    []string{"list", "schema <tool>"},
-				OutputFormat: "unstructured",
-				OutputType:   "text",
+				StructuredContent: map[string]any{"output_format": "unstructured", "output_type": "text"},
 			}, nil
 		})
 		toolNames = append(toolNames, name)
 	}
 
 	// Final batch completion check
-	if processedCount%batchSize != 0 {
+	if processedCount > 0 {
 		runtime.GC()
 		runtime.GC() // Double GC for final cleanup
 	}
-	
+
 	fmt.Fprintf(os.Stderr, "[INFO] ✅ Successfully completed processing all %d operations! Registration complete.\n", processedCount)
 
 	// Add a tool for externalDocs if present
@@ -1992,28 +1945,23 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			"properties": map[string]any{},
 		}
 		inputSchemaJSON, _ := json.MarshalIndent(inputSchema, "", "  ")
-		tool := mcp.NewToolWithRawSchema("externalDocs", desc, inputSchemaJSON)
-		tool.Annotations = mcp.ToolAnnotation{}
+		tool := newRawTool("externalDocs", desc, inputSchemaJSON)
+		tool.Annotations = &mcp.ToolAnnotations{}
 		if opts != nil && opts.Version != "" {
 			tool.Annotations.Title = "OpenAPI " + opts.Version
 		}
-		server.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		server.AddTool(tool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			info := "External documentation URL: " + doc.ExternalDocs.URL
 			if doc.ExternalDocs.Description != "" {
 				info += "\nDescription: " + doc.ExternalDocs.Description
 			}
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "text",
+					&mcp.TextContent{
 						Text: info,
 					},
 				},
-				Schema:    inputSchema,
-				Arguments: map[string]any{},
-				Examples:  []any{},
-				Usage:     "call externalDocs <json-args>",
-				NextSteps: []string{"list", "schema externalDocs"},
+				StructuredContent: map[string]any{"output_type": "text"},
 			}, nil
 		})
 		toolNames = append(toolNames, "externalDocs")
@@ -2027,12 +1975,12 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			"properties": map[string]any{},
 		}
 		inputSchemaJSON, _ := json.MarshalIndent(inputSchema, "", "  ")
-		tool := mcp.NewToolWithRawSchema("info", desc, inputSchemaJSON)
-		tool.Annotations = mcp.ToolAnnotation{}
+		tool := newRawTool("info", desc, inputSchemaJSON)
+		tool.Annotations = &mcp.ToolAnnotations{}
 		if opts != nil && opts.Version != "" {
 			tool.Annotations.Title = "OpenAPI " + opts.Version
 		}
-		server.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		server.AddTool(tool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			var sb strings.Builder
 			if doc.Info.Title != "" {
 				sb.WriteString("Title: " + doc.Info.Title + "\n")
@@ -2048,16 +1996,11 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			}
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "text",
+					&mcp.TextContent{
 						Text: strings.TrimSpace(sb.String()),
 					},
 				},
-				Schema:    inputSchema,
-				Arguments: map[string]any{},
-				Examples:  []any{},
-				Usage:     "call info <json-args>",
-				NextSteps: []string{"list", "schema info"},
+				StructuredContent: map[string]any{"output_type": "text"},
 			}, nil
 		})
 		toolNames = append(toolNames, "info")
@@ -2070,19 +2013,17 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			"properties": map[string]any{},
 		}
 		describeSchemaJSON, _ := json.MarshalIndent(describeSchema, "", "  ")
-		describeTool := mcp.NewToolWithRawSchema("describe", "Describe all available tools and their schemas in machine-readable form.", describeSchemaJSON)
-		describeTool.Annotations = mcp.ToolAnnotation{Title: "Agent-Friendly Documentation"}
-		server.AddTool(describeTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		describeTool := newRawTool("describe", "Describe all available tools and their schemas in machine-readable form.", describeSchemaJSON)
+		describeTool.Annotations = &mcp.ToolAnnotations{Title: "Agent-Friendly Documentation"}
+		server.AddTool(describeTool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			// Gather all tools and their schemas
 			tools := []map[string]any{}
-			for _, tool := range server.ListTools() {
+			for _, toolName := range toolNames {
 				toolInfo := map[string]any{
-					"name":         tool.Name,
-					"description":  tool.Description,
-					"inputSchema":  tool.InputSchema,
-					"annotations":  tool.Annotations,
+					"name":         toolName,
+					"inputSchema":  json.RawMessage(toolSchemas[toolName]),
 					"output_type":  "text", // default, can be improved if richer info is available
-					"example_call": map[string]any{"name": tool.Name, "arguments": map[string]any{}},
+					"example_call": map[string]any{"name": toolName, "arguments": map[string]any{}},
 				}
 				tools = append(tools, toolInfo)
 			}
@@ -2093,13 +2034,11 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			jsonOut, _ := json.MarshalIndent(response, "", "  ")
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "json",
+					&mcp.TextContent{
 						Text: string(jsonOut),
 					},
 				},
-				OutputFormat: "structured",
-				OutputType:   "json",
+				StructuredContent: response,
 			}, nil
 		})
 		toolNames = append(toolNames, "describe")
@@ -2126,27 +2065,27 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 
 	// Add a resource that provides the current Unix timestamp only if there are time-related operations
 	if hasTimeRelatedOps && (opts == nil || !opts.DryRun) {
-		timestampResource := mcp.Resource{
+		timestampResource := &mcp.Resource{
 			URI:         "timestamp://current",
 			Name:        "Current Unix Timestamp",
 			Description: "Provides the current Unix timestamp in seconds to help the AI understand the current date and time",
 			MIMEType:    "application/json",
 		}
 
-		server.AddResource(timestampResource, func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		server.AddResource(timestampResource, func(ctx context.Context, request *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 			now := time.Now().Unix()
 			content := fmt.Sprintf(`{"unix_timestamp": %d, "iso8601": "%s", "timezone": "%s"}`,
 				now,
 				time.Now().Format(time.RFC3339),
 				time.Now().Format("MST"))
 
-			return []mcp.ResourceContents{
-				mcp.TextResourceContents{
+			return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{
+				{
 					URI:      timestampResource.URI,
 					MIMEType: "application/json",
 					Text:     content,
 				},
-			}, nil
+			}}, nil
 		})
 	}
 

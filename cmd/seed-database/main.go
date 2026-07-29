@@ -90,7 +90,10 @@ func seedFromConfig(specLoader *services.SpecLoaderService, configFile string) {
 			if err == nil {
 				for _, spec := range specs {
 					if spec.Name == specConfig.Name {
-						specLoader.DeactivateSpec(spec.ID)
+						if err := specLoader.DeactivateSpec(spec.ID); err != nil {
+							fmt.Fprintf(os.Stderr, "Warning: Failed to deactivate %s: %v\n", specConfig.Name, err)
+							break
+						}
 						fmt.Printf("  → Deactivated spec '%s'\n", specConfig.Name)
 						break
 					}
@@ -140,7 +143,10 @@ func autoSeed(specLoader *services.SpecLoaderService) {
 			if err == nil {
 				for _, spec := range specs {
 					if spec.Name == specConfig.Name {
-						specLoader.DeactivateSpec(spec.ID)
+						if err := specLoader.DeactivateSpec(spec.ID); err != nil {
+							fmt.Fprintf(os.Stderr, "Warning: Failed to deactivate %s: %v\n", specConfig.Name, err)
+							break
+						}
 						status = "inactive"
 						break
 					}

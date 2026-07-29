@@ -21,7 +21,7 @@ graph TB
     subgraph "Service Layer"
         Services[pkg/services/]
         OpenAPI2MCP[pkg/openapi2mcp/]
-        MCP[pkg/mcp/]
+        MCP[official go-sdk/mcp]
     end
     
     subgraph "Data Layer"

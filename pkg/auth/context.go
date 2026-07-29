@@ -17,13 +17,13 @@ type AuthContext struct {
 	Token         string
 	AuthType      string
 	Endpoint      string
-	SpecParamName string // OpenAPI spec-defined parameter name for API keys
-	ApiHost       string // API host from OpenAPI spec servers
+	SpecParamName string            // OpenAPI spec-defined parameter name for API keys
+	ApiHost       string            // API host from OpenAPI spec servers
 	HostHeaders   map[string]string // Host headers extracted from OpenAPI spec parameters
-	
+
 	// Cache for parsed header mappings to avoid re-parsing spec content multiple times per request
 	headerMappingCache map[string]string
-	
+
 	// Store original HTTP request for header access during tool execution
 	OriginalRequest *http.Request
 }
@@ -55,7 +55,7 @@ func CreateAuthContextWithToolArgs(r *http.Request, doc *openapi3.T, spec *model
 	// Determine auth type from spec
 	_, authType, _ := ExtractAuthSchemeFromSpec(doc)
 	authCtx.AuthType = authType
-	
+
 	// Parse header mappings once and cache them in the auth context
 	if spec != nil {
 		log.Printf("DEBUG: Calling extractOriginalHeaderNamesFromSpec for endpoint %s", endpoint)
@@ -64,7 +64,7 @@ func CreateAuthContextWithToolArgs(r *http.Request, doc *openapi3.T, spec *model
 	} else {
 		log.Printf("DEBUG: spec is nil for endpoint %s, skipping header mapping cache", endpoint)
 	}
-	
+
 	// Extract parameter name and host for API key authentication
 	if authType == "apiKey" {
 		authCtx.SpecParamName = extractAPIKeyParameterNameWithCache(doc, authCtx.headerMappingCache)
@@ -75,7 +75,7 @@ func CreateAuthContextWithToolArgs(r *http.Request, doc *openapi3.T, spec *model
 	// Authentication Priority Hierarchy:
 	// 1. Tool Arguments (highest priority) - explicit auth in tool calls
 	// 2. HTTP Headers - request-specific authentication
-	// 3. Database Tokens - spec-specific tokens  
+	// 3. Database Tokens - spec-specific tokens
 	// 4. Environment Variables - fallback for compatibility
 	// 5. Default Configuration - system defaults
 
@@ -102,7 +102,7 @@ func CreateAuthContextWithToolArgs(r *http.Request, doc *openapi3.T, spec *model
 	}
 
 	authCtx.Token = token
-	
+
 	// Store original HTTP request for potential header access during tool execution
 	authCtx.OriginalRequest = r
 
@@ -140,7 +140,7 @@ func ExtractAuthSchemeFromSpecWithContent(doc *openapi3.T, rawSpecContent string
 				if schemeRef.Value.In == "query" {
 					location = "query"
 				}
-				
+
 				headerName := schemeRef.Value.Name
 				// If we have raw spec content, try to extract the original casing
 				if rawSpecContent != "" && location == "header" {
@@ -151,7 +151,7 @@ func ExtractAuthSchemeFromSpecWithContent(doc *openapi3.T, rawSpecContent string
 						headerName = originalName
 					}
 				}
-				
+
 				return schemeName, "apiKey", location + ":" + headerName
 			case "http":
 				switch schemeRef.Value.Scheme {
@@ -184,7 +184,7 @@ func extractTokenFromToolArgs(toolArgs map[string]any, authType string, doc *ope
 				}
 			}
 		}
-		
+
 		// Fallback to common API key parameter names
 		commonNames := []string{"key", "apikey", "api_key", "api-key"}
 		for _, name := range commonNames {
@@ -236,26 +236,6 @@ func extractAPIKeyParameterNameFromSpec(doc *openapi3.T) string {
 	return ""
 }
 
-// extractAPIKeyParameterNameWithOriginalCasing extracts API key parameter name with original casing preserved
-func extractAPIKeyParameterNameWithOriginalCasing(doc *openapi3.T, spec *models.OpenAPISpec) string {
-	// First get the parameter name from the OpenAPI library (may be lowercase)
-	normalizedParamName := extractAPIKeyParameterNameFromSpec(doc)
-	if normalizedParamName == "" {
-		return ""
-	}
-	
-	// Get original casing from raw spec content
-	if spec != nil {
-		headerMapping := extractOriginalHeaderNamesFromSpec(spec)
-		if originalName, exists := headerMapping[strings.ToLower(normalizedParamName)]; exists {
-			return originalName
-		}
-	}
-	
-	// Fallback to the normalized name if we can't find the original
-	return normalizedParamName
-}
-
 // extractAPIKeyParameterNameWithCache extracts API key parameter name using cached header mappings
 func extractAPIKeyParameterNameWithCache(doc *openapi3.T, headerMappingCache map[string]string) string {
 	// First get the parameter name from the OpenAPI library (may be lowercase)
@@ -263,69 +243,16 @@ func extractAPIKeyParameterNameWithCache(doc *openapi3.T, headerMappingCache map
 	if normalizedParamName == "" {
 		return ""
 	}
-	
+
 	// Use cached header mappings if available
 	if headerMappingCache != nil {
 		if originalName, exists := headerMappingCache[strings.ToLower(normalizedParamName)]; exists {
 			return originalName
 		}
 	}
-	
+
 	// Fallback to the normalized name if we can't find the original
 	return normalizedParamName
-}
-
-// extractTokenFromRequestHeaders extracts authentication token from HTTP request headers
-// using the exact header names defined in the OpenAPI spec's securitySchemes
-func extractTokenFromRequestHeaders(r *http.Request, authType string, doc *openapi3.T) string {
-	return extractTokenFromRequestHeadersWithSpec(r, authType, doc, nil)
-}
-
-// extractTokenFromRequestHeadersWithSpec extracts authentication token with spec context for original casing
-func extractTokenFromRequestHeadersWithSpec(r *http.Request, authType string, doc *openapi3.T, spec *models.OpenAPISpec) string {
-	switch authType {
-	case "bearer":
-		if authHeader := r.Header.Get("Authorization"); authHeader != "" {
-			if strings.HasPrefix(authHeader, "Bearer ") {
-				return strings.TrimPrefix(authHeader, "Bearer ")
-			}
-		}
-	case "basic":
-		if authHeader := r.Header.Get("Authorization"); authHeader != "" {
-			if strings.HasPrefix(authHeader, "Basic ") {
-				return strings.TrimPrefix(authHeader, "Basic ")
-			}
-		}
-	case "apiKey":
-		// Extract the exact header name from the OpenAPI spec with original casing
-		specHeaderName := extractAPIKeyHeaderFromSpecWithOriginalCasing(doc, spec)
-		if specHeaderName != "" {
-			if value := r.Header.Get(specHeaderName); value != "" {
-				return value
-			}
-		}
-		
-		// Fallback to common header names if spec doesn't specify or header not found
-		fallbackHeaders := []string{
-			"Authorization",     // Generic auth header (check for non-Bearer/Basic)
-			"X-API-Key",        // Common API key header
-			"Api-Key",          // Alternative API key header
-			"X-RapidAPI-Key",   // RapidAPI specific with correct casing
-		}
-		for _, header := range fallbackHeaders {
-			if value := r.Header.Get(header); value != "" {
-				// Handle Authorization header with API key (no Bearer/Basic prefix)
-				if header == "Authorization" && !strings.HasPrefix(value, "Bearer ") && !strings.HasPrefix(value, "Basic ") {
-					return value
-				}
-				// Handle direct API key headers
-				if header != "Authorization" {
-					return value
-				}
-			}
-		}
-	}
-	return ""
 }
 
 // extractTokenFromRequestHeadersWithCache extracts authentication token using cached header mappings
@@ -351,13 +278,13 @@ func extractTokenFromRequestHeadersWithCache(r *http.Request, authType string, d
 				return value
 			}
 		}
-		
+
 		// Fallback to common header names if spec doesn't specify or header not found
 		fallbackHeaders := []string{
-			"Authorization",     // Generic auth header (check for non-Bearer/Basic)
-			"X-API-Key",        // Common API key header
-			"Api-Key",          // Alternative API key header
-			"X-RapidAPI-Key",   // RapidAPI specific with correct casing
+			"Authorization",  // Generic auth header (check for non-Bearer/Basic)
+			"X-API-Key",      // Common API key header
+			"Api-Key",        // Alternative API key header
+			"X-RapidAPI-Key", // RapidAPI specific with correct casing
 		}
 		for _, header := range fallbackHeaders {
 			if value := r.Header.Get(header); value != "" {
@@ -391,26 +318,6 @@ func extractAPIKeyHeaderFromSpec(doc *openapi3.T) string {
 	return ""
 }
 
-// extractAPIKeyHeaderFromSpecWithOriginalCasing extracts API key header name with original casing preserved
-func extractAPIKeyHeaderFromSpecWithOriginalCasing(doc *openapi3.T, spec *models.OpenAPISpec) string {
-	// First get the header name from the OpenAPI library (may be lowercase)
-	normalizedHeaderName := extractAPIKeyHeaderFromSpec(doc)
-	if normalizedHeaderName == "" {
-		return ""
-	}
-	
-	// Get original casing from raw spec content
-	if spec != nil {
-		headerMapping := extractOriginalHeaderNamesFromSpec(spec)
-		if originalName, exists := headerMapping[strings.ToLower(normalizedHeaderName)]; exists {
-			return originalName
-		}
-	}
-	
-	// Fallback to the normalized name if we can't find the original
-	return normalizedHeaderName
-}
-
 // extractAPIKeyHeaderFromCache extracts API key header name using cached header mappings
 func extractAPIKeyHeaderFromCache(doc *openapi3.T, headerMappingCache map[string]string) string {
 	// First get the header name from the OpenAPI library (may be lowercase)
@@ -418,14 +325,14 @@ func extractAPIKeyHeaderFromCache(doc *openapi3.T, headerMappingCache map[string
 	if normalizedHeaderName == "" {
 		return ""
 	}
-	
+
 	// Use cached header mappings if available
 	if headerMappingCache != nil {
 		if originalName, exists := headerMappingCache[strings.ToLower(normalizedHeaderName)]; exists {
 			return originalName
 		}
 	}
-	
+
 	// Fallback to the normalized name if we can't find the original
 	return normalizedHeaderName
 }
@@ -449,9 +356,9 @@ func extractTokenFromEnvironment(authType string) string {
 	case "apiKey":
 		// Try environment variables in priority order
 		envVars := []string{
-			"API_KEY",           // Generic API key
-			"RAPIDAPI_KEY",      // RapidAPI specific
-			"X_API_KEY",         // X-API-Key variant
+			"API_KEY",      // Generic API key
+			"RAPIDAPI_KEY", // RapidAPI specific
+			"X_API_KEY",    // X-API-Key variant
 		}
 		for _, envVar := range envVars {
 			if token := os.Getenv(envVar); token != "" {
@@ -461,6 +368,7 @@ func extractTokenFromEnvironment(authType string) string {
 	}
 	return ""
 }
+
 // extractAPIHostFromSpec extracts the API host from OpenAPI spec's servers section
 // This is used for APIs like RapidAPI that require a specific host header (x-rapidapi-host)
 func extractAPIHostFromSpec(doc *openapi3.T) string {
@@ -494,73 +402,19 @@ func extractAPIHostFromSpec(doc *openapi3.T) string {
 	return ""
 }
 
-// extractHostHeadersFromSpec extracts required host headers from OpenAPI spec parameters
-// This reads the actual header requirements from the spec and preserves original casing
-func extractHostHeadersFromSpec(doc *openapi3.T) map[string]string {
-	return extractHostHeadersFromSpecWithOriginalCasing(doc, nil)
-}
-
-// extractHostHeadersFromSpecWithOriginalCasing extracts host headers with original casing preserved
-func extractHostHeadersFromSpecWithOriginalCasing(doc *openapi3.T, spec *models.OpenAPISpec) map[string]string {
-	hostHeaders := make(map[string]string)
-	
-	if doc == nil || doc.Components == nil || doc.Components.Parameters == nil {
-		return hostHeaders
-	}
-	
-	// Get original header name mappings
-	var headerMapping map[string]string
-	if spec != nil {
-		headerMapping = extractOriginalHeaderNamesFromSpec(spec)
-	}
-	
-	// Look through all parameters for host-related headers
-	for _, paramRef := range doc.Components.Parameters {
-		if paramRef.Value != nil && paramRef.Value.In == "header" {
-			param := paramRef.Value
-			
-			// Check if this is a host-related parameter
-			headerName := param.Name
-			if strings.Contains(strings.ToLower(headerName), "host") {
-				// Use original casing if available
-				originalHeaderName := headerName
-				if headerMapping != nil {
-					if original, exists := headerMapping[strings.ToLower(headerName)]; exists {
-						originalHeaderName = original
-					}
-				}
-				
-				// Get default value from schema if available
-				if param.Schema != nil && param.Schema.Value != nil && param.Schema.Value.Default != nil {
-					if defaultVal, ok := param.Schema.Value.Default.(string); ok {
-						hostHeaders[originalHeaderName] = defaultVal
-					}
-				}
-				
-				// If no default value, use the API host from servers
-				if hostHeaders[originalHeaderName] == "" {
-					hostHeaders[originalHeaderName] = extractAPIHostFromSpec(doc)
-				}
-			}
-		}
-	}
-	
-	return hostHeaders
-}
-
 // extractHostHeadersWithCache extracts host headers using cached header mappings
 func extractHostHeadersWithCache(doc *openapi3.T, headerMappingCache map[string]string) map[string]string {
 	hostHeaders := make(map[string]string)
-	
+
 	if doc == nil || doc.Components == nil || doc.Components.Parameters == nil {
 		return hostHeaders
 	}
-	
+
 	// Look through all parameters for host-related headers
 	for _, paramRef := range doc.Components.Parameters {
 		if paramRef.Value != nil && paramRef.Value.In == "header" {
 			param := paramRef.Value
-			
+
 			// Check if this is a host-related parameter
 			headerName := param.Name
 			if strings.Contains(strings.ToLower(headerName), "host") {
@@ -571,14 +425,14 @@ func extractHostHeadersWithCache(doc *openapi3.T, headerMappingCache map[string]
 						originalHeaderName = original
 					}
 				}
-				
+
 				// Get default value from schema if available
 				if param.Schema != nil && param.Schema.Value != nil && param.Schema.Value.Default != nil {
 					if defaultVal, ok := param.Schema.Value.Default.(string); ok {
 						hostHeaders[originalHeaderName] = defaultVal
 					}
 				}
-				
+
 				// If no default value, use the API host from servers
 				if hostHeaders[originalHeaderName] == "" {
 					hostHeaders[originalHeaderName] = extractAPIHostFromSpec(doc)
@@ -586,21 +440,21 @@ func extractHostHeadersWithCache(doc *openapi3.T, headerMappingCache map[string]
 			}
 		}
 	}
-	
+
 	return hostHeaders
 }
 
 // extractOriginalHeaderNamesFromSpec extracts original header names with correct casing from raw spec content
 func extractOriginalHeaderNamesFromSpec(spec *models.OpenAPISpec) map[string]string {
 	headerMapping := make(map[string]string)
-	
+
 	if spec == nil || spec.SpecContent == "" {
 		log.Printf("DEBUG: extractOriginalHeaderNamesFromSpec - spec is nil or empty")
 		return headerMapping
 	}
-	
+
 	log.Printf("DEBUG: extractOriginalHeaderNamesFromSpec - parsing spec content (first 100 chars): %s", spec.SpecContent[:min(100, len(spec.SpecContent))])
-	
+
 	// Parse the raw spec content as JSON to preserve original casing
 	var specData map[string]interface{}
 	if err := json.Unmarshal([]byte(spec.SpecContent), &specData); err != nil {
@@ -615,10 +469,10 @@ func extractOriginalHeaderNamesFromSpec(spec *models.OpenAPISpec) map[string]str
 	} else {
 		log.Printf("DEBUG: JSON parsing succeeded")
 	}
-	
+
 	// Check which security schemes are actually used (global security or operation security)
 	usedSecuritySchemes := make(map[string]bool)
-	
+
 	// Check global security definition
 	if globalSecurity, ok := specData["security"].([]interface{}); ok {
 		for _, securityItem := range globalSecurity {
@@ -629,39 +483,39 @@ func extractOriginalHeaderNamesFromSpec(spec *models.OpenAPISpec) map[string]str
 			}
 		}
 	}
-	
+
 	log.Printf("DEBUG: Found used security schemes: %+v", usedSecuritySchemes)
-	
+
 	// Navigate to components.securitySchemes
 	components, ok := specData["components"].(map[string]interface{})
 	if !ok {
 		return headerMapping
 	}
-	
+
 	securitySchemes, ok := components["securitySchemes"].(map[string]interface{})
 	if !ok {
 		return headerMapping
 	}
-	
+
 	// Extract header names from security schemes that are actually used
 	for schemeName, schemeData := range securitySchemes {
 		// Only process security schemes that are actually referenced
 		if !usedSecuritySchemes[schemeName] {
 			continue
 		}
-		
+
 		scheme, ok := schemeData.(map[string]interface{})
 		if !ok {
 			continue
 		}
-		
+
 		schemeType, ok := scheme["type"].(string)
 		if !ok {
 			continue
 		}
-		
+
 		log.Printf("DEBUG: Processing security scheme %s of type %s", schemeName, schemeType)
-		
+
 		switch schemeType {
 		case "apiKey":
 			// Handle API key security schemes
@@ -669,14 +523,14 @@ func extractOriginalHeaderNamesFromSpec(spec *models.OpenAPISpec) map[string]str
 			if !ok || in != "header" {
 				continue
 			}
-			
+
 			name, ok := scheme["name"].(string)
 			if ok {
 				// Map lowercase version to original casing
 				headerMapping[strings.ToLower(name)] = name
 				log.Printf("DEBUG: Added API key header mapping: %s -> %s", strings.ToLower(name), name)
 			}
-			
+
 		case "http":
 			// Handle HTTP security schemes (Bearer, Basic, etc.)
 			httpScheme, ok := scheme["scheme"].(string)
@@ -687,7 +541,7 @@ func extractOriginalHeaderNamesFromSpec(spec *models.OpenAPISpec) map[string]str
 			}
 		}
 	}
-	
+
 	// Also check components.parameters for header parameters
 	parameters, ok := components["parameters"].(map[string]interface{})
 	if ok {
@@ -696,12 +550,12 @@ func extractOriginalHeaderNamesFromSpec(spec *models.OpenAPISpec) map[string]str
 			if !ok {
 				continue
 			}
-			
+
 			in, ok := param["in"].(string)
 			if !ok || in != "header" {
 				continue
 			}
-			
+
 			name, ok := param["name"].(string)
 			if ok {
 				// Map lowercase version to original casing
@@ -709,7 +563,7 @@ func extractOriginalHeaderNamesFromSpec(spec *models.OpenAPISpec) map[string]str
 			}
 		}
 	}
-	
+
 	log.Printf("DEBUG: extractOriginalHeaderNamesFromSpec - final header mapping: %+v", headerMapping)
 	return headerMapping
 }

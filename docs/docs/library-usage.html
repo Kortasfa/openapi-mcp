@@ -82,13 +82,13 @@
           For direct access to MCP server functionality:
         </p>
         
-        <pre><code class="language-bash">go get github.com/jedisct1/openapi-mcp/pkg/mcp/server</code></pre>
+        <pre><code class="language-bash">go get github.com/modelcontextprotocol/go-sdk/mcp</code></pre>
         
         <p>
           For MCP types and utilities:
         </p>
         
-        <pre><code class="language-bash">go get github.com/jedisct1/openapi-mcp/pkg/mcp/mcp</code></pre>
+        <pre><code class="language-bash">go get github.com/modelcontextprotocol/go-sdk/mcp</code></pre>
         
         <h2>Key Components</h2>
         <p>
@@ -138,8 +138,8 @@
                 <td>Gets the URL for the Streamable HTTP endpoint</td>
               </tr>
               <tr>
-                <td><code>GetSSEURL</code>, <code>GetMessageURL</code></td>
-                <td>Gets URLs for SSE mode endpoints</td>
+                <td><code>GetStreamableHTTPURL</code></td>
+                <td>Gets the stateless Streamable HTTP endpoint URL</td>
               </tr>
             </tbody>
           </table>
@@ -187,7 +187,7 @@ func main() {
         
         <h2>HTTP Mode</h2>
         <p>
-          When using HTTP mode, openapi-mcp serves a StreamableHTTP-based MCP server by default. For developers building HTTP clients, the package provides convenient URL helper functions:
+          When using HTTP mode, openapi-mcp serves the official MCP Go SDK's stateless Streamable HTTP handler:
         </p>
 
         <div class="card mb-4">
@@ -195,61 +195,22 @@ func main() {
 streamableURL := openapi2mcp.GetStreamableHTTPURL(":8080", "/mcp")
 // Returns: "http://localhost:8080/mcp"
 
-// For SSE mode (when using --http-transport=sse), you can use:
-sseURL := openapi2mcp.GetSSEURL(":8080", "/mcp")
-// Returns: "http://localhost:8080/mcp/sse"
-
-messageURL := openapi2mcp.GetMessageURL(":8080", "/mcp", sessionID)
-// Returns: "http://localhost:8080/mcp/message?sessionId=<sessionID>"</code></pre>
+// Requests do not use MCP session IDs.</code></pre>
         </div>
 
         <h3>StreamableHTTP Client Connection Flow:</h3>
         <ol>
           <li>Send POST requests to the Streamable HTTP endpoint for requests/notifications</li>
-          <li>Send GET requests to the same endpoint to listen for notifications</li>
-          <li>Send DELETE requests to terminate the session</li>
+          <li>Use independent POST requests; no session lifecycle is required</li>
         </ol>
 
         <div class="card mb-4">
           <h4>Example with curl:</h4>
-          <pre><code class="language-bash"># Step 1: Initialize the session
+          <pre><code class="language-bash"># Discover server capabilities
 curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}'
-
-# The response will include a Mcp-Session-Id header
-
-# Step 2: Send JSON-RPC requests
-curl -X POST http://localhost:8080/mcp \
-  -H "Content-Type: application/json" \
-  -H "Mcp-Session-Id: <session-id>" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
-
-# Step 3: Listen for notifications
-curl -N http://localhost:8080/mcp \
-  -H "Mcp-Session-Id: <session-id>"</code></pre>
-        </div>
-
-        <h3>SSE Client Connection Flow (when using --http-transport=sse):</h3>
-        <ol>
-          <li>Connect to the SSE endpoint to establish a persistent connection</li>
-          <li>Receive an `endpoint` event containing the session ID</li>
-          <li>Send JSON-RPC requests to the message endpoint using the session ID</li>
-          <li>Receive responses and notifications via the SSE stream</li>
-        </ol>
-
-        <div class="card mb-4">
-          <h4>Example with curl (SSE mode):</h4>
-          <pre><code class="language-bash"># Step 1: Connect to SSE endpoint (keep connection open)
-curl -N http://localhost:8080/mcp/sse
-
-# Output: event: endpoint
-#         data: /mcp/message?sessionId=<session-id>
-
-# Step 2: Send JSON-RPC requests (in another terminal)
-curl -X POST http://localhost:8080/mcp/message?sessionId=<session-id> \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'</code></pre>
+  -H "Accept: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}'</code></pre>
         </div>
         
         <h2>Advanced Usage with MCP Package</h2>
@@ -264,8 +225,7 @@ import (
 	"context"
 	"log"
 	
-	"github.com/jedisct1/openapi-mcp/pkg/mcp/mcp"
-	"github.com/jedisct1/openapi-mcp/pkg/mcp/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/jedisct1/openapi-mcp/pkg/openapi2mcp"
 )
 
@@ -384,7 +344,7 @@ import (
 	"log"
 	"os"
 	
-	"github.com/jedisct1/openapi-mcp/pkg/mcp/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/jedisct1/openapi-mcp/pkg/openapi2mcp"
 )
 
@@ -433,8 +393,7 @@ func main() {
         </p>
         <ul>
           <li><a href="https://pkg.go.dev/github.com/jedisct1/openapi-mcp/pkg/openapi2mcp" target="_blank">openapi2mcp package</a> - Main library for OpenAPI to MCP conversion</li>
-          <li><a href="https://pkg.go.dev/github.com/jedisct1/openapi-mcp/pkg/mcp/server" target="_blank">mcp/server package</a> - MCP server implementation</li>
-          <li><a href="https://pkg.go.dev/github.com/jedisct1/openapi-mcp/pkg/mcp/mcp" target="_blank">mcp/mcp package</a> - Core MCP types and tools</li>
+          <li><a href="https://pkg.go.dev/github.com/modelcontextprotocol/go-sdk/mcp" target="_blank">official MCP Go SDK</a> - MCP server, tools and transports</li>
         </ul>
         
         <h2>Next Steps</h2>

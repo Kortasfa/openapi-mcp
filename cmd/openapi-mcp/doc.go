@@ -1,5 +1,5 @@
 // doc.go
-package cmd
+package main
 
 import (
 	"encoding/json"
@@ -71,12 +71,24 @@ func writeMarkdownDocFromSummaries(path string, summaries []map[string]any, doc 
 		return err
 	}
 	defer f.Close()
-	f.WriteString("# MCP Tools Documentation\n\n")
+	write := func(value string) error {
+		_, err := f.WriteString(value)
+		return err
+	}
+	if err := write("# MCP Tools Documentation\n\n"); err != nil {
+		return err
+	}
 	if doc.Info != nil {
-		f.WriteString(fmt.Sprintf("**API Title:** %s\n\n", doc.Info.Title))
-		f.WriteString(fmt.Sprintf("**Version:** %s\n\n", doc.Info.Version))
+		if err := write(fmt.Sprintf("**API Title:** %s\n\n", doc.Info.Title)); err != nil {
+			return err
+		}
+		if err := write(fmt.Sprintf("**Version:** %s\n\n", doc.Info.Version)); err != nil {
+			return err
+		}
 		if doc.Info.Description != "" {
-			f.WriteString(doc.Info.Description + "\n\n")
+			if err := write(doc.Info.Description + "\n\n"); err != nil {
+				return err
+			}
 		}
 	}
 	for _, m := range summaries {
@@ -84,29 +96,43 @@ func writeMarkdownDocFromSummaries(path string, summaries []map[string]any, doc 
 		desc, _ := m["description"].(string)
 		tags, _ := m["tags"].([]any)
 		inputSchema, _ := m["inputSchema"].(map[string]any)
-		f.WriteString(fmt.Sprintf("## %s\n\n", name))
+		if err := write(fmt.Sprintf("## %s\n\n", name)); err != nil {
+			return err
+		}
 		if desc != "" {
-			f.WriteString(desc + "\n\n")
+			if err := write(desc + "\n\n"); err != nil {
+				return err
+			}
 		}
 		if len(tags) > 0 {
 			tagStrs := make([]string, len(tags))
 			for i, t := range tags {
 				tagStrs[i], _ = t.(string)
 			}
-			f.WriteString(fmt.Sprintf("**Tags:** %s\n\n", strings.Join(tagStrs, ", ")))
+			if err := write(fmt.Sprintf("**Tags:** %s\n\n", strings.Join(tagStrs, ", "))); err != nil {
+				return err
+			}
 		}
 		// Arguments
 		props, _ := inputSchema["properties"].(map[string]any)
 		if len(props) > 0 {
-			f.WriteString("**Arguments:**\n\n")
-			f.WriteString("| Name | Type | Description |\n|------|------|-------------|\n")
+			if err := write("**Arguments:**\n\n"); err != nil {
+				return err
+			}
+			if err := write("| Name | Type | Description |\n|------|------|-------------|\n"); err != nil {
+				return err
+			}
 			for name, v := range props {
 				vmap, _ := v.(map[string]any)
 				typeStr, _ := vmap["type"].(string)
 				desc, _ := vmap["description"].(string)
-				f.WriteString(fmt.Sprintf("| %s | %s | %s |\n", name, typeStr, desc))
+				if err := write(fmt.Sprintf("| %s | %s | %s |\n", name, typeStr, desc)); err != nil {
+					return err
+				}
 			}
-			f.WriteString("\n")
+			if err := write("\n"); err != nil {
+				return err
+			}
 		}
 		// Example call (best effort)
 		example := map[string]any{}
@@ -133,8 +159,12 @@ func writeMarkdownDocFromSummaries(path string, summaries []map[string]any, doc 
 		}
 		if len(example) > 0 {
 			exampleJSON, _ := json.MarshalIndent(example, "", "  ")
-			f.WriteString("**Example call:**\n\n")
-			f.WriteString("```json\n" + fmt.Sprintf("call %s %s\n", name, string(exampleJSON)) + "```\n\n")
+			if err := write("**Example call:**\n\n"); err != nil {
+				return err
+			}
+			if err := write("```json\n" + fmt.Sprintf("call %s %s\n", name, string(exampleJSON)) + "```\n\n"); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -155,8 +185,12 @@ func processWithPostHook(jsonBytes []byte, postHookCmd string) ([]byte, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	stdin.Write(jsonBytes)
-	stdin.Close()
+	if _, err := stdin.Write(jsonBytes); err != nil {
+		return nil, err
+	}
+	if err := stdin.Close(); err != nil {
+		return nil, err
+	}
 	out, _ := io.ReadAll(stdout)
 	errBytes, _ := io.ReadAll(errPipe)
 	err = cmd.Wait()

@@ -8,9 +8,9 @@ This package provides a Go library for converting OpenAPI 3.x specifications int
 go get github.com/jedisct1/openapi-mcp/pkg/openapi2mcp
 ```
 
-For direct access to MCP types and tools:
+For direct access to MCP types and tools, use the official SDK:
 ```bash
-go get github.com/jedisct1/openapi-mcp/pkg/mcp
+go get github.com/modelcontextprotocol/go-sdk/mcp
 ```
 
 ## Usage
@@ -45,67 +45,10 @@ func main() {
 }
 ```
 
-### Using MCP Package Directly
-
-For more advanced usage, you can work with MCP types and tools directly:
-
-```go
-package main
-
-import (
-        "context"
-        "log"
-
-        "github.com/jedisct1/openapi-mcp/pkg/mcp/mcp"
-        "github.com/jedisct1/openapi-mcp/pkg/mcp/server"
-        "github.com/jedisct1/openapi-mcp/pkg/openapi2mcp"
-)
-
-func main() {
-        // Load OpenAPI spec
-        doc, err := openapi2mcp.LoadOpenAPISpec("openapi.yaml")
-        if err != nil {
-                log.Fatal(err)
-        }
-
-        // Create MCP server manually
-        srv := server.NewMCPServer("myapi", doc.Info.Version)
-
-        // Register OpenAPI tools
-        ops := openapi2mcp.ExtractOpenAPIOperations(doc)
-        openapi2mcp.RegisterOpenAPITools(srv, ops, doc, nil)
-
-        // Add custom tools using the MCP package directly
-        customTool := mcp.NewTool("custom",
-                mcp.WithDescription("A custom tool"),
-                mcp.WithString("message", mcp.Description("Message to process"), mcp.Required()),
-        )
-
-        srv.AddTool(customTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-                args := req.GetArguments()
-                message := args["message"].(string)
-
-                return &mcp.CallToolResult{
-                        Content: []mcp.Content{
-                                mcp.TextContent{
-                                        Type: "text",
-                                        Text: "Processed: " + message,
-                                },
-                        },
-                }, nil
-        })
-
-        // Serve
-        if err := server.ServeStdio(srv); err != nil {
-                log.Fatal(err)
-        }
-}
-```
-
 ## Features
 
 - Convert OpenAPI 3.x specifications to MCP tool servers
-- Support for HTTP (StreamableHTTP is default, SSE also available) and stdio transport
+- Support for stateless Streamable HTTP and stdio transports through the official MCP Go SDK
 - Automatic tool generation from OpenAPI operations
 - Built-in validation and error handling
 - AI-optimized responses with structured output
@@ -116,15 +59,6 @@ See [GoDoc](https://pkg.go.dev/github.com/jedisct1/openapi-mcp/pkg/openapi2mcp) 
 
 ### HTTP Client Development
 
-When using HTTP mode, openapi-mcp now serves a StreamableHTTP-based MCP server by default. For developers building HTTP clients, you can interact with the `/mcp` endpoint using POST/GET/DELETE as per the StreamableHTTP protocol. SSE is still available by running with the `--http-transport=sse` flag or using `ServeHTTP` in Go.
+When using HTTP mode, openapi-mcp serves the official MCP Go SDK's stateless Streamable HTTP handler. Clients send independent POST requests to the same endpoint without session management.
 
 See the [StreamableHTTP specification](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http) for protocol details.
-
-If you need SSE, you can still use:
-
-```go
-// Serve over HTTP using SSE
-if err := openapi2mcp.ServeHTTP(srv, ":8080", "/mcp"); err != nil {
-    log.Fatal(err)
-}
-```

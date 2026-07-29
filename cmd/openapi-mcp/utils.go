@@ -1,5 +1,5 @@
 // utils.go
-package cmd
+package main
 
 import (
 	"encoding/json"
@@ -78,8 +78,14 @@ func compareWithDiffFile(opts *openapi2mcp.ToolGenOptions, doc *openapi3.T, ops 
 		return
 	}
 	defer os.Remove(tmpFile.Name())
-	tmpFile.Write(curBytes)
-	tmpFile.Close()
+	if _, err := tmpFile.Write(curBytes); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing temporary diff file: %v\n", err)
+		return
+	}
+	if err := tmpFile.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error closing temporary diff file: %v\n", err)
+		return
+	}
 	cmd := exec.Command("diff", "-u", diffFile, tmpFile.Name())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

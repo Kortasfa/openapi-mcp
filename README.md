@@ -345,7 +345,7 @@ curl -H "Authorization: Basic base64_credentials" http://localhost:8080/mcp -d '
 
 Authentication is automatically applied to the appropriate endpoints as defined in your OpenAPI spec. HTTP header authentication takes precedence over environment variables for the duration of each request.
 
-When using HTTP mode, openapi-mcp serves a StreamableHTTP-based MCP server by default. For developers building HTTP clients, the package provides convenient URL helper functions:
+When using HTTP mode, openapi-mcp serves the official MCP Go SDK's stateless Streamable HTTP handler. The same endpoint is used for every request; no MCP session ID is required.
 
 ```go
 import "github.com/jedisct1/openapi-mcp/pkg/openapi2mcp"
@@ -354,57 +354,26 @@ import "github.com/jedisct1/openapi-mcp/pkg/openapi2mcp"
 streamableURL := openapi2mcp.GetStreamableHTTPURL(":8080", "/mcp")
 // Returns: "http://localhost:8080/mcp"
 
-// For SSE mode (when using --http-transport=sse), you can use:
-sseURL := openapi2mcp.GetSSEURL(":8080", "/mcp")
-// Returns: "http://localhost:8080/mcp/sse"
-
-messageURL := openapi2mcp.GetMessageURL(":8080", "/mcp", sessionID)
-// Returns: "http://localhost:8080/mcp/message?sessionId=<sessionID>"
 ```
 
-**StreamableHTTP Client Connection Flow:**
-1. Send POST requests to the Streamable HTTP endpoint for requests/notifications
-2. Send GET requests to the same endpoint to listen for notifications
-3. Send DELETE requests to terminate the session
+**Stateless Streamable HTTP:**
+1. Send MCP JSON-RPC requests as POST requests to the endpoint
+2. Include `Accept: application/json`
+3. Do not manage MCP sessions or session IDs
 
 **Example with curl:**
 ```sh
-# Step 1: Initialize the session
+# Discover server capabilities
 curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}'
+  -H "Accept: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}'
 
-# The response will include a Mcp-Session-Id header
-
-# Step 2: Send JSON-RPC requests
+# List tools
 curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
-  -H "Mcp-Session-Id: <session-id>" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
-
-# Step 3: Listen for notifications
-curl -N http://localhost:8080/mcp \
-  -H "Mcp-Session-Id: <session-id>"
-```
-
-**SSE Client Connection Flow (when using --http-transport=sse):**
-1. Connect to the SSE endpoint to establish a persistent connection
-2. Receive an `endpoint` event containing the session ID
-3. Send JSON-RPC requests to the message endpoint using the session ID
-4. Receive responses and notifications via the SSE stream
-
-**Example with curl (SSE mode):**
-```sh
-# Step 1: Connect to SSE endpoint (keep connection open)
-curl -N http://localhost:8080/mcp/sse
-
-# Output: event: endpoint
-#         data: /mcp/message?sessionId=<session-id>
-
-# Step 2: Send JSON-RPC requests (in another terminal)
-curl -X POST http://localhost:8080/mcp/message?sessionId=<session-id> \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+  -H "Accept: application/json" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 ```
 
 ## 🛠️ Usage Examples
@@ -638,8 +607,6 @@ bin/openapi-mcp --http :8080
 
 **Core MCP Protocol:**
 - `GET/POST /mcp` - Main MCP server endpoint (StreamableHTTP transport)
-- `GET /mcp/sse` - Server-Sent Events endpoint (with `--http-transport=sse`)
-- `POST /mcp/message` - Message endpoint for SSE mode
 - `GET /health` - Health check endpoint
 
 ### API-Specific Endpoints (Database-Driven)

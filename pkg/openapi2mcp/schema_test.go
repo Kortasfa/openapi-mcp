@@ -6,6 +6,11 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
+func typesPtr(types ...string) *openapi3.Types {
+	t := openapi3.Types(types)
+	return &t
+}
+
 func TestSchemaBasic(t *testing.T) {
 	// TODO: Add tests for schema parsing and validation
 	t.Run("dummy", func(t *testing.T) {

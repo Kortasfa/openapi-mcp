@@ -269,17 +269,23 @@ func main() {
 		line, err := rl.Readline()
 		if err == readline.ErrInterrupt {
 			if len(line) == 0 {
-				cmd.Process.Kill()
+				if err := cmd.Process.Kill(); err != nil {
+					fmt.Fprintf(os.Stderr, "failed to stop server: %v\n", err)
+				}
 				return
 			}
 			continue
 		} else if err == io.EOF {
-			cmd.Process.Kill()
+			if err := cmd.Process.Kill(); err != nil {
+				fmt.Fprintf(os.Stderr, "failed to stop server: %v\n", err)
+			}
 			return
 		}
 		line = strings.TrimSpace(line)
 		if line == "exit" || line == "quit" {
-			cmd.Process.Kill()
+			if err := cmd.Process.Kill(); err != nil {
+				fmt.Fprintf(os.Stderr, "failed to stop server: %v\n", err)
+			}
 			return
 		}
 		if line == "help" {
@@ -303,7 +309,9 @@ func main() {
 				"params":  map[string]any{},
 			}
 			id++
-			json.NewEncoder(serverIn).Encode(msg)
+			if err := json.NewEncoder(serverIn).Encode(msg); err != nil {
+				fmt.Fprintln(os.Stderr, "failed to send tools/list request:", err)
+			}
 			continue
 		}
 		if strings.HasPrefix(line, "schema ") {
@@ -385,7 +393,9 @@ func main() {
 				},
 			}
 			id++
-			json.NewEncoder(serverIn).Encode(msg)
+			if err := json.NewEncoder(serverIn).Encode(msg); err != nil {
+				fmt.Fprintln(os.Stderr, "failed to send tools/call request:", err)
+			}
 			continue
 		}
 		if line == "history" || strings.HasPrefix(line, "history ") {

@@ -36,6 +36,12 @@ func setCORSAndCacheHeaders(w http.ResponseWriter) {
 	w.Header().Set("Expires", "0")
 }
 
+func writeJSON(w http.ResponseWriter, value any) {
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		log.Printf("failed to encode JSON response: %v", err)
+	}
+}
+
 // HandleLint handles POST requests to lint OpenAPI specs
 func (s *HTTPLintServer) HandleLint(w http.ResponseWriter, r *http.Request) {
 	// Set CORS and caching headers for all responses
@@ -81,7 +87,7 @@ func (s *HTTPLintServer) HandleLint(w http.ResponseWriter, r *http.Request) {
 			Summary: "OpenAPI spec parsing failed.",
 		}
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(result)
+		writeJSON(w, result)
 		return
 	}
 
@@ -95,7 +101,7 @@ func (s *HTTPLintServer) HandleLint(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
 	}
 
-	json.NewEncoder(w).Encode(result)
+	writeJSON(w, result)
 }
 
 // HandleHealth handles GET requests for health checks
@@ -122,7 +128,7 @@ func (s *HTTPLintServer) HandleHealth(w http.ResponseWriter, r *http.Request) {
 		"service":   "openapi-lint",
 		"detailed":  s.detailedSuggestions,
 	}
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // ServeHTTPLint starts an HTTP server for linting OpenAPI specs
@@ -178,7 +184,7 @@ func ServeHTTPLint(addr string, detailedSuggestions bool) error {
 		endpointsMap["POST /lint"] = "Comprehensive OpenAPI linting with detailed suggestions"
 		endpointsMap["GET /health"] = "Health check endpoint"
 
-		json.NewEncoder(w).Encode(endpoints)
+		writeJSON(w, endpoints)
 	})
 
 	log.Printf("Starting OpenAPI validation/linting HTTP server on %s (validate & lint endpoints available)", addr)
