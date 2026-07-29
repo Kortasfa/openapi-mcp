@@ -17,7 +17,7 @@ func NewSecureHTTPClientWrapper(client *http.Client, provider SecureAuthProvider
 	if client == nil {
 		client = http.DefaultClient
 	}
-	
+
 	return &SecureHTTPClientWrapper{
 		client:   client,
 		provider: provider,
@@ -28,7 +28,7 @@ func NewSecureHTTPClientWrapper(client *http.Client, provider SecureAuthProvider
 func (w *SecureHTTPClientWrapper) Do(req *http.Request) (*http.Response, error) {
 	// Clone the request to avoid modifying the original
 	clonedReq := req.Clone(req.Context())
-	
+
 	// Add authentication headers
 	if headers := w.provider.GetAuthHeaders(req.Context()); headers != nil {
 		if os.Getenv("DEBUG") != "" {
@@ -45,23 +45,7 @@ func (w *SecureHTTPClientWrapper) Do(req *http.Request) (*http.Response, error) 
 			log.Printf("⚠️ SecureHTTPClientWrapper: No auth headers returned from provider")
 		}
 	}
-	
-	// Add authentication query parameters
-	if params := w.provider.GetAuthQueryParams(req.Context()); params != nil {
-		if os.Getenv("DEBUG") != "" {
-			log.Printf("🔧 SecureHTTPClientWrapper: Adding auth query params: %+v", params)
-		}
-		q := clonedReq.URL.Query()
-		for key, value := range params {
-			q.Set(key, value)
-		}
-		clonedReq.URL.RawQuery = q.Encode()
-	} else {
-		if os.Getenv("DEBUG") != "" {
-			log.Printf("🔧 SecureHTTPClientWrapper: No auth query params from provider")
-		}
-	}
-	
+
 	return w.client.Do(clonedReq)
 }
 
@@ -76,7 +60,7 @@ func NewSecureRoundTripper(base http.RoundTripper, provider SecureAuthProvider) 
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	
+
 	return &SecureRoundTripper{
 		base:     base,
 		provider: provider,
@@ -87,22 +71,13 @@ func NewSecureRoundTripper(base http.RoundTripper, provider SecureAuthProvider) 
 func (t *SecureRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Clone the request to avoid modifying the original
 	clonedReq := req.Clone(req.Context())
-	
+
 	// Add authentication headers
 	if headers := t.provider.GetAuthHeaders(req.Context()); headers != nil {
 		for key, value := range headers {
 			clonedReq.Header.Set(key, value)
 		}
 	}
-	
-	// Add authentication query parameters  
-	if params := t.provider.GetAuthQueryParams(req.Context()); params != nil {
-		q := clonedReq.URL.Query()
-		for key, value := range params {
-			q.Set(key, value)
-		}
-		clonedReq.URL.RawQuery = q.Encode()
-	}
-	
+
 	return t.base.RoundTrip(clonedReq)
 }

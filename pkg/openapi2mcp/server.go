@@ -10,7 +10,6 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/ubermorgenland/openapi-mcp/pkg/models"
 )
 
 // NewServer creates an official MCP SDK server and registers all OpenAPI tools.
@@ -26,20 +25,8 @@ func NewServerWithOps(name, version string, doc *openapi3.T, ops []OpenAPIOperat
 	})
 	fmt.Fprintf(os.Stderr, "[INFO] Registering %d operations for %s\n", len(ops), name)
 	runtime.GC()
-	RegisterOpenAPITools(srv, ops, doc, nil, nil)
+	RegisterOpenAPITools(srv, ops, doc, nil)
 	runtime.GC()
-	return srv
-}
-
-// NewServerWithDatabase creates an official MCP SDK server with database-backed auth metadata.
-func NewServerWithDatabase(name, version string, doc *openapi3.T, dbSpec *models.OpenAPISpec) *mcp.Server {
-	srv := mcp.NewServer(&mcp.Implementation{Name: name, Version: version}, &mcp.ServerOptions{
-		Capabilities: &mcp.ServerCapabilities{},
-		SchemaCache:  mcp.NewSchemaCache(),
-	})
-	ops := ExtractOpenAPIOperations(doc)
-	fmt.Fprintf(os.Stderr, "[INFO] Registering %d operations for %s with database auth\n", len(ops), name)
-	RegisterOpenAPITools(srv, ops, doc, nil, dbSpec)
 	return srv
 }
 

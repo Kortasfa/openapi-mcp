@@ -8,26 +8,8 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/ubermorgenland/openapi-mcp/pkg/database"
 	"github.com/ubermorgenland/openapi-mcp/pkg/openapi2mcp"
-	"github.com/ubermorgenland/openapi-mcp/pkg/services"
 )
-
-func tryLoadFromDatabase() ([]openapi2mcp.OpenAPIOperation, []*openapi3.T, bool) {
-	if os.Getenv("DATABASE_URL") == "" {
-		return nil, nil, false
-	}
-	if err := database.InitializeDatabase(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to initialize database: %v\nFalling back to file loading\n", err)
-		return nil, nil, false
-	}
-	ops, docs, err := services.NewSpecLoaderService(database.DB).LoadFromDatabase()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to load database specs: %v\nFalling back to file loading\n", err)
-		return nil, nil, false
-	}
-	return ops, docs, true
-}
 
 func startServer(flags *cliFlags, ops []openapi2mcp.OpenAPIOperation, doc *openapi3.T) {
 	if flags.httpAddr != "" && len(flags.mounts) > 0 {
@@ -49,12 +31,6 @@ func startServer(flags *cliFlags, ops []openapi2mcp.OpenAPIOperation, doc *opena
 			os.Exit(1)
 		}
 		return
-	}
-
-	if flags.httpAddr != "" {
-		if loadedOps, docs, ok := tryLoadFromDatabase(); ok && len(docs) > 0 {
-			ops, doc = loadedOps, docs[0]
-		}
 	}
 
 	if doc == nil && len(flags.args) > 0 {

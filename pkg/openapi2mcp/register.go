@@ -21,8 +21,6 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/ubermorgenland/openapi-mcp/pkg/auth"
-	"github.com/ubermorgenland/openapi-mcp/pkg/database"
-	"github.com/ubermorgenland/openapi-mcp/pkg/models"
 	"github.com/xeipuuv/gojsonschema"
 )
 
@@ -31,7 +29,6 @@ type ToolRegistrar struct {
 	server        *mcp.Server
 	doc           *openapi3.T
 	opts          *ToolGenOptions
-	dbSpec        *models.OpenAPISpec
 	baseURLs      []string
 	apiKeyHeader  string
 	toolSchemas   map[string][]byte
@@ -40,12 +37,11 @@ type ToolRegistrar struct {
 }
 
 // NewToolRegistrar creates a new tool registrar instance
-func NewToolRegistrar(server *mcp.Server, doc *openapi3.T, opts *ToolGenOptions, dbSpec *models.OpenAPISpec) *ToolRegistrar {
+func NewToolRegistrar(server *mcp.Server, doc *openapi3.T, opts *ToolGenOptions) *ToolRegistrar {
 	return &ToolRegistrar{
 		server:        server,
 		doc:           doc,
 		opts:          opts,
-		dbSpec:        dbSpec,
 		toolSchemas:   make(map[string][]byte),
 		toolNames:     []string{},
 		toolSummaries: []map[string]any{},
@@ -269,7 +265,6 @@ func logAuthenticatedHTTPRequest(req *http.Request, authProvider auth.SecureAuth
 
 	// Get authentication headers that will be applied
 	authHeaders := authProvider.GetAuthHeaders(req.Context())
-	authQueryParams := authProvider.GetAuthQueryParams(req.Context())
 
 	// Show original headers
 	if len(req.Header) > 0 {
@@ -288,14 +283,6 @@ func logAuthenticatedHTTPRequest(req *http.Request, authProvider auth.SecureAuth
 			} else {
 				log.Printf("│    %s: %s", name, value)
 			}
-		}
-	}
-
-	// Show authentication query params that will be added
-	if len(authQueryParams) > 0 {
-		log.Printf("│ 🔐 Authentication Query Params (to be added):")
-		for name, value := range authQueryParams {
-			log.Printf("│    %s: %s", name, value)
 		}
 	}
 
@@ -1089,13 +1076,9 @@ func hasDateTimeInSchemaWithVisited(schema *openapi3.Schema, visited map[*openap
 // Also adds tools for externalDocs, info, and describe if present in the OpenAPI spec.
 // RegisterOpenAPIToolsRefactored demonstrates the improved, refactored approach using ToolRegistrar
 // This would replace the 1890-line function below once fully implemented
-func RegisterOpenAPIToolsRefactored(server *mcp.Server, ops []OpenAPIOperation, doc *openapi3.T, opts *ToolGenOptions, dbSpecs ...*models.OpenAPISpec) []string {
-	var dbSpec *models.OpenAPISpec
-	if len(dbSpecs) > 0 {
-		dbSpec = dbSpecs[0]
-	}
+func RegisterOpenAPIToolsRefactored(server *mcp.Server, ops []OpenAPIOperation, doc *openapi3.T, opts *ToolGenOptions) []string {
 	// Create and configure the registrar (replaces 100+ lines of setup code)
-	registrar := NewToolRegistrar(server, doc, opts, dbSpec)
+	registrar := NewToolRegistrar(server, doc, opts)
 	registrar.setupConfiguration()
 
 	// Process all operations (encapsulates the complex logic in manageable methods)
@@ -1112,11 +1095,7 @@ func RegisterOpenAPIToolsRefactored(server *mcp.Server, ops []OpenAPIOperation, 
 // RegisterOpenAPITools creates MCP tools for each provided OpenAPI operation.
 // The handler validates arguments, builds the HTTP request, and returns the HTTP response as the tool result.
 // Returns the list of tool names registered.
-func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *openapi3.T, opts *ToolGenOptions, dbSpecs ...*models.OpenAPISpec) []string {
-	var dbSpec *models.OpenAPISpec
-	if len(dbSpecs) > 0 {
-		dbSpec = dbSpecs[0]
-	}
+func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *openapi3.T, opts *ToolGenOptions) []string {
 	baseURLs := []string{}
 	if os.Getenv("OPENAPI_BASE_URL") != "" {
 		baseURLs = append(baseURLs, os.Getenv("OPENAPI_BASE_URL"))
@@ -1244,16 +1223,6 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 				processedCount, actualOpsCount,
 				float64(processedCount)/float64(actualOpsCount)*100,
 				float64(m.HeapAlloc)/1024/1024, float64(m.Sys)/1024/1024)
-		}
-
-		// Database health check every 50 operations to prevent connection timeout
-		if dbSpec != nil && processedCount%50 == 0 {
-			// Check database connection health during long-running operations
-			if err := database.EnsureConnection(); err != nil {
-				fmt.Fprintf(os.Stderr, "[WARN] Database connection issue at operation %d/%d: %v\n", processedCount, actualOpsCount, err)
-			} else {
-				fmt.Fprintf(os.Stderr, "[INFO] ✅ Database connection healthy at operation %d/%d\n", processedCount, actualOpsCount)
-			}
 		}
 
 		// Build schema with error protection and memory optimization
