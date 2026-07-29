@@ -78,7 +78,7 @@ changelog:
 # Release to GitHub
 release:
   github:
-    owner: jedisct1
+    owner: Kortasfa
     name: openapi-mcp
   prerelease: auto
   draft: false

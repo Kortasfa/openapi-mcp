@@ -322,8 +322,6 @@ We value all contributions and will recognize them through:
 
 ### Project-Specific Guides
 - **Database Setup**: See [DATABASE_SETUP.md](DATABASE_SETUP.md)
-- **API Examples**: See [SPEC_API_EXAMPLES.md](SPEC_API_EXAMPLES.md)
-- **Architecture**: See [docs/architecture.md](docs/architecture.md) (if available)
 
 ---
 

@@ -4,12 +4,10 @@
 
 > **Expose any OpenAPI 3.x API as a robust, agent-friendly MCP tool server in seconds!**
 
-> **Note**: This project is built upon the excellent work from [jedisct1/openapi-mcp](https://github.com/jedisct1/openapi-mcp) ([documentation](https://jedisct1.github.io/openapi-mcp/)). This version extends the original with additional database-driven features and enhanced authentication handling.
+> **Note**: This repository is a fork of [ubermorgenland/openapi-mcp](https://github.com/ubermorgenland/openapi-mcp). It adds database-driven spec management, enhanced authentication handling, and uses the official MCP Go SDK.
 
-[![Go Version](https://img.shields.io/badge/go-1.21%2B-blue)](https://golang.org/dl/)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/jedisct1/openapi-mcp/ci.yml?branch=main)](https://github.com/jedisct1/openapi-mcp/actions)
-[![License](https://img.shields.io/github/license/jedisct1/openapi-mcp)](LICENSE)
-[![GoDoc](https://pkg.go.dev/badge/github.com/jedisct1/openapi-mcp/pkg/openapi2mcp.svg)](https://pkg.go.dev/github.com/jedisct1/openapi-mcp/pkg/openapi2mcp)
+[![Go Version](https://img.shields.io/badge/go-1.25%2B-blue)](https://go.dev/dl/)
+[![License](https://img.shields.io/github/license/Kortasfa/openapi-mcp)](LICENSE)
 
 ---
 
@@ -58,7 +56,7 @@
   - Combine multiple active specs into a single MCP server
   - Automatic fallback to file-based loading when database unavailable
 - **Instant API to MCP Conversion**: Parses any OpenAPI 3.x YAML/JSON spec and generates MCP tools
-- **Multiple Transport Options**: Supports stdio (default) and HTTP server modes
+- **Official MCP Go SDK**: Uses the current official SDK with stdio and stateless Streamable HTTP transports
 - **Complete Parameter Support**: Path, query, header, cookie, and body parameters
 - **Authentication**: API key, Bearer token, Basic auth, and OAuth2 support
 - **Structured Output**: All responses have consistent, well-structured formats with type information
@@ -134,8 +132,8 @@ make seed-database  # Imports specs with smart defaults
 
 **Option 2: Custom Configuration**
 ```sh
-# Edit seed_config.yaml to customize which specs are active
-make seed-from-config
+# Pass a configuration file to the seeding command
+bin/seed-database seed_config.yaml
 ```
 
 **Option 3: Manual Import**
@@ -218,37 +216,6 @@ bin/spec-manager set-token 2 ""  # Clear token
 # View only active specs
 bin/spec-manager active
 ```
-
-**HTTP API Management:**
-```sh
-# Start the management API server
-bin/spec-api-server :8090
-
-# Import spec via HTTP POST
-curl -X POST http://localhost:8090/specs \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "my-api",
-    "endpoint_path": "/my-api",
-    "spec_content": "{\"openapi\":\"3.0.0\"...}",
-    "api_key_token": "YOUR_API_KEY_HERE",
-    "active": true
-  }'
-
-# List all specs
-curl http://localhost:8090/specs | jq '.'
-
-# Activate/deactivate specs
-curl -X POST http://localhost:8090/specs/1/activate
-curl -X POST http://localhost:8090/specs/1/deactivate
-
-# Update API key token
-curl -X PUT http://localhost:8090/specs/1/token \
-  -H "Content-Type: application/json" \
-  -d '{"api_key_token": "YOUR_NEW_API_KEY_HERE"}'
-```
-
-See [SPEC_API_EXAMPLES.md](SPEC_API_EXAMPLES.md) for comprehensive API examples.
 
 ### 2. Use the Interactive Client
 
@@ -348,7 +315,7 @@ Authentication is automatically applied to the appropriate endpoints as defined 
 When using HTTP mode, openapi-mcp serves the official MCP Go SDK's stateless Streamable HTTP handler. The same endpoint is used for every request; no MCP session ID is required.
 
 ```go
-import "github.com/jedisct1/openapi-mcp/pkg/openapi2mcp"
+import "github.com/ubermorgenland/openapi-mcp/pkg/openapi2mcp"
 
 // Get the Streamable HTTP endpoint URL
 streamableURL := openapi2mcp.GetStreamableHTTPURL(":8080", "/mcp")
@@ -358,7 +325,7 @@ streamableURL := openapi2mcp.GetStreamableHTTPURL(":8080", "/mcp")
 
 **Stateless Streamable HTTP:**
 1. Send MCP JSON-RPC requests as POST requests to the endpoint
-2. Include `Accept: application/json`
+2. Include `Accept: application/json, text/event-stream`
 3. Do not manage MCP sessions or session IDs
 
 **Example with curl:**
@@ -366,13 +333,13 @@ streamableURL := openapi2mcp.GetStreamableHTTPURL(":8080", "/mcp")
 # Discover server capabilities
 curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}'
 
 # List tools
 curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 ```
 
@@ -566,26 +533,7 @@ bin/openapi-mcp --no-confirm-dangerous examples/fastly-openapi-mcp.yaml
 | `spec-manager set-token <id> <token>` | Set or clear API key token for a spec                    |
 | `spec-manager delete <id>`        | Delete a spec from database                                    |
 | `make seed-database`              | Auto-seed database with predefined spec configuration         |
-| `make seed-from-config`           | Seed database using custom seed_config.yaml                   |
 | `make import-specs-from-files`    | Bulk import all specs from specs/ directory                   |
-
-#### HTTP API Server
-| Command                           | Description                                                    |
-| --------------------------------- | -------------------------------------------------------------- |
-| `spec-api-server :8090`           | Start HTTP API server for remote spec management              |
-
-#### HTTP API Endpoints
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/specs` | List all specs with full metadata |
-| `POST` | `/specs` | Import new spec from JSON payload |
-| `GET` | `/specs/active` | List only active specs |
-| `DELETE` | `/specs/{id}` | Delete spec by ID |
-| `POST` | `/specs/{id}/activate` | Activate spec by ID |
-| `POST` | `/specs/{id}/deactivate` | Deactivate spec by ID |
-| `PUT` | `/specs/{id}/token` | Update API key token for spec |
-| `GET` | `/health` | Health check endpoint |
-| `GET` | `/swagger` | OpenAPI specification for this API |
 
 ### Environment Variables
 
@@ -753,88 +701,6 @@ bin/spec-manager delete 2
 # Output: Successfully deleted spec with ID 2
 ```
 
-### Remote Management API Examples
-
-For remote management, you could create a simple HTTP wrapper around the spec-manager functionality:
-
-**Create a simple management API server (`management-server.go`):**
-```go
-package main
-
-import (
-    "encoding/json"
-    "net/http"
-    "strconv"
-    
-    "github.com/jedisct1/openapi-mcp/pkg/database"
-    "github.com/jedisct1/openapi-mcp/pkg/services"
-)
-
-func main() {
-    database.InitializeDatabase()
-    specLoader := services.NewSpecLoaderService(database.DB)
-    
-    http.HandleFunc("/specs", func(w http.ResponseWriter, r *http.Request) {
-        switch r.Method {
-        case "GET":
-            specs, _ := specLoader.GetAllSpecs()
-            json.NewEncoder(w).Encode(specs)
-        }
-    })
-    
-    http.HandleFunc("/specs/active", func(w http.ResponseWriter, r *http.Request) {
-        specs, _ := specLoader.GetActiveSpecs()
-        json.NewEncoder(w).Encode(specs)
-    })
-    
-    http.ListenAndServe(":9090", nil)
-}
-```
-
-**Then use curl with the management API:**
-
-**List all specs:**
-```bash
-curl -X GET http://localhost:9090/specs | jq '.'
-
-# Example response:
-# [
-#   {
-#     "id": 1,
-#     "name": "weather",
-#     "title": "OpenWeatherMap API",
-#     "version": "2.5",
-#     "endpoint_path": "/weather",
-#     "file_format": "json",
-#     "is_active": true,
-#     "created_at": "2024-08-27T10:30:00Z",
-#     "updated_at": "2024-08-27T10:30:00Z"
-#   },
-#   {
-#     "id": 2,
-#     "name": "twitter",
-#     "title": "Twitter API", 
-#     "version": "2.0",
-#     "endpoint_path": "/twitter",
-#     "file_format": "yaml",
-#     "is_active": false,
-#     "created_at": "2024-08-27T10:31:00Z",
-#     "updated_at": "2024-08-27T10:31:00Z"
-#   }
-# ]
-```
-
-**List active specs only:**
-```bash
-curl -X GET http://localhost:9090/specs/active | jq '.[].name'
-
-# Example response:
-# "weather"
-# "google-keywords" 
-# "youtube-transcript"
-# "perplexity"
-```
-
 ### Bulk Operations with curl and jq
 
 **Activate multiple specs by name:**
@@ -960,7 +826,7 @@ openapi-mcp can be imported as a Go module in your projects:
 package main
 
 import (
-        "github.com/jedisct1/openapi-mcp/pkg/openapi2mcp"
+        "github.com/ubermorgenland/openapi-mcp/pkg/openapi2mcp"
 )
 
 func main() {
@@ -974,7 +840,7 @@ func main() {
         srv := openapi2mcp.NewServer("myapi", doc.Info.Version, doc)
 
         // Serve over HTTP
-        if err := openapi2mcp.ServeHTTP(srv, ":8080"); err != nil {
+        if err := openapi2mcp.ServeStreamableHTTP(srv, ":8080", "/mcp"); err != nil {
                 panic(err)
         }
 
@@ -985,7 +851,7 @@ func main() {
 }
 ```
 
-See [GoDoc](https://pkg.go.dev/github.com/jedisct1/openapi-mcp/pkg/openapi2mcp) for complete API documentation.
+The current Go module path is `github.com/ubermorgenland/openapi-mcp`; see its [package documentation](https://pkg.go.dev/github.com/ubermorgenland/openapi-mcp/pkg/openapi2mcp) for the public API.
 
 ## 📊 Output Structure
 
@@ -1139,10 +1005,8 @@ We believe in fostering an inclusive, welcoming community where everyone can con
 ## 📚 Documentation & Learning
 
 ### 📖 Comprehensive Guides
-- **[Getting Started Guide](GETTING_STARTED.md)** - Step-by-step tutorial for new users
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute code, docs, and ideas
 - **[Database Setup](DATABASE_SETUP.md)** - Complete database configuration guide
-- **[API Examples](SPEC_API_EXAMPLES.md)** - HTTP API usage examples and recipes
 
 ### 🎓 Learning Resources
 - **Package Documentation**: Full API docs available on [pkg.go.dev](https://pkg.go.dev/github.com/ubermorgenland/openapi-mcp)

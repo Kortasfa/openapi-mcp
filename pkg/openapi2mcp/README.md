@@ -5,7 +5,7 @@ This package provides a Go library for converting OpenAPI 3.x specifications int
 ## Installation
 
 ```bash
-go get github.com/jedisct1/openapi-mcp/pkg/openapi2mcp
+go get github.com/ubermorgenland/openapi-mcp/pkg/openapi2mcp
 ```
 
 For direct access to MCP types and tools, use the official SDK:
@@ -20,7 +20,7 @@ package main
 
 import (
         "log"
-        "github.com/jedisct1/openapi-mcp/pkg/openapi2mcp"
+        "github.com/ubermorgenland/openapi-mcp/pkg/openapi2mcp"
 )
 
 func main() {
@@ -55,10 +55,10 @@ func main() {
 
 ## API Documentation
 
-See [GoDoc](https://pkg.go.dev/github.com/jedisct1/openapi-mcp/pkg/openapi2mcp) for complete API documentation.
+See [GoDoc](https://pkg.go.dev/github.com/ubermorgenland/openapi-mcp/pkg/openapi2mcp) for complete API documentation.
 
 ### HTTP Client Development
 
 When using HTTP mode, openapi-mcp serves the official MCP Go SDK's stateless Streamable HTTP handler. Clients send independent POST requests to the same endpoint without session management.
 
-See the [StreamableHTTP specification](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http) for protocol details.
+See the [current Streamable HTTP specification](https://modelcontextprotocol.io/specification/latest/basic/transports#streamable-http) for protocol details.

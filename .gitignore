@@ -1,7 +1,6 @@
 # Build artifacts
 bin/
 *.exe
-openapitools
 
 # Go build cache
 .zig-cache
@@ -27,7 +26,6 @@ tmp/
 !.env.example
 !.env.test.example
 *.env
-test_authentication/.env.test
 config.json
 config.yaml
 config.yml
@@ -69,4 +67,3 @@ RELEASE.md
 
 
 openapimcp
-scripts/
